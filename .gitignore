@@ -1,15 +1,40 @@
+# Python
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
+.Python
 *.egg-info/
+.eggs/
 dist/
 build/
+
+# Environment
 .env
 .venv/
 venv/
-data/models/
-data/uploads/
-data/outputs/
-*.pt
-*.bin
-*.onnx
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Data
+data/uploads/*
+data/outputs/*
+data/models/*
+!data/hotwords/hotwords.txt
+
+# Docker
+*.log
+
+# Cache
 .cache/
+.pytest_cache/
+.mypy_cache/
+
+# OS
+.DS_Store
+Thumbs.db

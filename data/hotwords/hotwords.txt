@@ -1,0 +1,26 @@
+# 常用热词配置
+# 每行一个热词，# 开头为注释
+
+# 技术词汇
+FunASR
+CapsWriter
+Paraformer
+Python
+JavaScript
+TypeScript
+Docker
+Kubernetes
+
+# 公司/产品
+阿里巴巴
+腾讯
+字节跳动
+百度
+华为
+小米
+Bilibili
+
+# 中文常见误识别
+麦当劳
+肯德基
+星巴克
