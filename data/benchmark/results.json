@@ -1,0 +1,94 @@
+{
+  "device": "cpu",
+  "audio_files": [
+    "data/benchmark/test_hotword.mp3",
+    "data/benchmark/test_medium.mp3",
+    "data/benchmark/test_short.mp3"
+  ],
+  "benchmarks": [
+    {
+      "model_name": "paraformer-zh",
+      "supported": true,
+      "error": null,
+      "total_audio_duration": 25.680000000000003,
+      "total_inference_time": 4.123175498999899,
+      "avg_rtf": 0.1605597935747624,
+      "avg_memory_mb": 0.5416666666666666,
+      "avg_cer": null,
+      "results": [
+        {
+          "audio_file": "data/benchmark/test_hotword.mp3",
+          "audio_duration": 9.576,
+          "inference_time": 1.0381510790000448,
+          "rtf": 0.10841176681287017,
+          "memory_mb": 0.0,
+          "text": "请问贵公司的客服电话是多少？我想咨询一下产品售后服务，另外关于产品保修期限是多久？",
+          "cer": null,
+          "error": null
+        },
+        {
+          "audio_file": "data/benchmark/test_medium.mp3",
+          "audio_duration": 12.792,
+          "inference_time": 1.6790648589999364,
+          "rtf": 0.13125897897122704,
+          "memory_mb": 1.5,
+          "text": "人工智能技术正在深刻改变我们的生活方式。从智能手机到自动驾驶汽车无处不在，语音识别技术已经成为人机交互的重要方式。",
+          "cer": null,
+          "error": null
+        },
+        {
+          "audio_file": "data/benchmark/test_short.mp3",
+          "audio_duration": 3.312,
+          "inference_time": 1.4059595609999178,
+          "rtf": 0.4245046983695404,
+          "memory_mb": 0.125,
+          "text": "今天天气真好，适合出去散步。",
+          "cer": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "model_name": "paraformer-zh-onnx",
+      "supported": true,
+      "error": null,
+      "total_audio_duration": 25.680000000000003,
+      "total_inference_time": 0.5645020790004764,
+      "avg_rtf": 0.021982168185376804,
+      "avg_memory_mb": 0.5,
+      "avg_cer": null,
+      "results": [
+        {
+          "audio_file": "data/benchmark/test_hotword.mp3",
+          "audio_duration": 9.576,
+          "inference_time": 0.2165436730001602,
+          "rtf": 0.022613165517978297,
+          "memory_mb": 0.0,
+          "text": "",
+          "cer": null,
+          "error": null
+        },
+        {
+          "audio_file": "data/benchmark/test_medium.mp3",
+          "audio_duration": 12.792,
+          "inference_time": 0.25729435000016565,
+          "rtf": 0.02011369215135754,
+          "memory_mb": 1.5,
+          "text": "",
+          "cer": null,
+          "error": null
+        },
+        {
+          "audio_file": "data/benchmark/test_short.mp3",
+          "audio_duration": 3.312,
+          "inference_time": 0.0906640560001506,
+          "rtf": 0.02737441304352373,
+          "memory_mb": 0.0,
+          "text": "",
+          "cer": null,
+          "error": null
+        }
+      ]
+    }
+  ]
+}

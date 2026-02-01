@@ -26,6 +26,7 @@ class AudioPreprocessor:
     - RMS 音量归一化到目标电平
     - 首尾静音裁剪
     - 音频格式验证
+    - 自适应预处理 (根据 SNR 智能选择)
 
     用法:
         processor = AudioPreprocessor(target_db=-20.0, denoise_enable=True)
@@ -45,6 +46,8 @@ class AudioPreprocessor:
         vocal_separate_enable: bool = False,
         vocal_separate_model: str = "htdemucs",
         device: str = "cpu",
+        adaptive_enable: bool = False,
+        snr_threshold: float = 20.0,
     ):
         """
         初始化预处理器
@@ -57,10 +60,12 @@ class AudioPreprocessor:
             trim_silence_enable: 是否启用静音裁剪
             denoise_enable: 是否启用降噪
             denoise_prop: 降噪强度 (0-1)，默认 0.8
-            denoise_backend: 降噪后端 ("noisereduce" 或 "deepfilter")
+            denoise_backend: 降噪后端 ("noisereduce", "deepfilter", "deepfilter3")
             vocal_separate_enable: 是否启用人声分离
             vocal_separate_model: Demucs 模型名称
             device: 设备 ("cpu" 或 "cuda")
+            adaptive_enable: 是否启用自适应预处理
+            snr_threshold: SNR 阈值 (低于此值启用降噪)
         """
         self.target_db = target_db
         self.silence_threshold_db = silence_threshold_db
@@ -73,6 +78,8 @@ class AudioPreprocessor:
         self.vocal_separate_enable = vocal_separate_enable
         self.vocal_separate_model = vocal_separate_model
         self.device = device
+        self.adaptive_enable = adaptive_enable
+        self.snr_threshold = snr_threshold
 
         # 预计算阈值
         self.target_rms = self._db_to_amplitude(target_db)
@@ -204,6 +211,7 @@ class AudioPreprocessor:
         根据配置的 backend 使用不同的降噪算法：
         - noisereduce: 频谱减法，轻量快速
         - deepfilter: DeepFilterNet 深度学习，质量更高
+        - deepfilter3: DeepFilterNet v3，最高质量 (PESQ 3.5+)
 
         Args:
             audio: 音频数据 (numpy array)
@@ -215,8 +223,8 @@ class AudioPreprocessor:
         if len(audio) == 0:
             return audio
 
-        # 使用 DeepFilterNet
-        if self.denoise_backend == "deepfilter":
+        # 使用 DeepFilterNet (v2 或 v3)
+        if self.denoise_backend in ("deepfilter", "deepfilter3"):
             if self.deep_denoiser is not None:
                 return self.deep_denoiser.enhance(audio, sample_rate)
             logger.warning("DeepFilterNet not available, falling back to noisereduce")
@@ -334,6 +342,60 @@ class AudioPreprocessor:
 
         return True, ""
 
+    def estimate_snr(self, audio: np.ndarray, sample_rate: int = 16000) -> float:
+        """
+        估算信噪比 (SNR)
+
+        使用简化的 VAD 方法：将信号分为语音段和非语音段，
+        计算两者能量比作为 SNR 估计。
+
+        Args:
+            audio: 音频数据
+            sample_rate: 采样率
+
+        Returns:
+            估算的 SNR (dB)
+        """
+        if len(audio) == 0:
+            return 0.0
+
+        # 帧参数
+        frame_length = int(sample_rate * 0.025)  # 25ms
+        hop_length = int(sample_rate * 0.010)    # 10ms
+
+        # 计算帧能量
+        num_frames = (len(audio) - frame_length) // hop_length + 1
+        if num_frames <= 0:
+            return 0.0
+
+        frame_energies = np.zeros(num_frames)
+        for i in range(num_frames):
+            start = i * hop_length
+            end = start + frame_length
+            frame = audio[start:end]
+            frame_energies[i] = np.mean(frame ** 2)
+
+        if len(frame_energies) == 0:
+            return 0.0
+
+        # 使用能量阈值区分语音和噪声
+        threshold = np.percentile(frame_energies, 30)  # 假设 30% 是噪声
+
+        speech_energy = frame_energies[frame_energies > threshold]
+        noise_energy = frame_energies[frame_energies <= threshold]
+
+        if len(speech_energy) == 0 or len(noise_energy) == 0:
+            return 30.0  # 默认返回较高 SNR
+
+        avg_speech = np.mean(speech_energy)
+        avg_noise = np.mean(noise_energy)
+
+        if avg_noise < 1e-10:
+            return 50.0  # 几乎无噪声
+
+        snr = 10 * np.log10(avg_speech / avg_noise)
+        return max(0.0, min(50.0, snr))  # 限制范围
+
     def process(
         self,
         audio: np.ndarray,
@@ -345,10 +407,11 @@ class AudioPreprocessor:
 
         处理顺序:
         1. 格式验证 (可选)
-        2. 人声分离 (如果启用)
-        3. 降噪 (如果启用)
-        4. 静音裁剪 (如果启用)
-        5. 音量归一化 (如果启用)
+        2. 自适应预处理决策 (如果启用)
+        3. 人声分离 (如果启用)
+        4. 降噪 (如果启用或自适应判定需要)
+        5. 静音裁剪 (如果启用)
+        6. 音量归一化 (如果启用)
 
         Args:
             audio: 音频数据
@@ -366,19 +429,38 @@ class AudioPreprocessor:
             if not is_valid:
                 raise ValueError(f"音频验证失败: {error}")
 
+        # 自适应预处理：根据 SNR 决定是否需要降噪
+        should_denoise = self.denoise_enable
+        should_trim = self.trim_silence_enable
+
+        if self.adaptive_enable:
+            snr = self.estimate_snr(audio, sample_rate)
+            logger.debug(f"Estimated SNR: {snr:.1f} dB (threshold: {self.snr_threshold} dB)")
+
+            # 低 SNR 时启用降噪
+            if snr < self.snr_threshold:
+                should_denoise = True
+                logger.debug(f"Adaptive: enabling denoising (SNR={snr:.1f} < {self.snr_threshold})")
+
+            # 检测是否有大量静音
+            rms_db = self.get_rms_db(audio)
+            if rms_db < -30:
+                should_trim = True
+                logger.debug(f"Adaptive: enabling silence trimming (RMS={rms_db:.1f} dB)")
+
         # 1. 人声分离 (应在降噪之前)
         if self.vocal_separate_enable and self.vocal_separator is not None:
             audio = self.vocal_separator.separate_vocals(audio, sample_rate)
 
         # 2. 降噪 (应在其他处理之前)
-        if self.denoise_enable:
+        if should_denoise:
             audio = self.denoise(audio, sample_rate)
 
-        # 2. 静音裁剪
-        if self.trim_silence_enable:
+        # 3. 静音裁剪
+        if should_trim:
             audio = self.trim_silence(audio, sample_rate)
 
-        # 3. 音量归一化
+        # 4. 音量归一化
         if self.normalize_enable:
             audio = self.normalize_volume(audio, sample_rate)
 

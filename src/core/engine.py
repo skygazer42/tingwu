@@ -1,8 +1,11 @@
 """核心转写引擎"""
 import asyncio
 import logging
-from typing import Dict, Any, Optional, Union, List
+import time
+from typing import Dict, Any, Optional, Union, List, Callable
 from pathlib import Path
+
+import numpy as np
 
 from src.config import settings
 from src.models.model_manager import model_manager
@@ -14,6 +17,7 @@ from src.core.llm import LLMClient, LLMMessage, PromptBuilder
 from src.core.llm.roles import get_role
 from src.core.text_processor import TextPostProcessor
 from src.core.text_processor.text_corrector import TextCorrector
+from src.core.audio.chunker import AudioChunker
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +28,9 @@ class TranscriptionEngine:
     def __init__(self):
         self.corrector = PhonemeCorrector(
             threshold=settings.hotwords_threshold,
-            similar_threshold=settings.hotwords_threshold - 0.2
+            similar_threshold=settings.hotwords_threshold - 0.2,
+            use_faiss=settings.hotword_use_faiss,
+            faiss_index_type=settings.hotword_faiss_index_type,
         )
         self.rule_corrector = RuleCorrector()
         self.rectification_rag = RectificationRAG()
@@ -32,6 +38,13 @@ class TranscriptionEngine:
 
         # 文本后处理器
         self.post_processor = TextPostProcessor.from_config(settings)
+
+        # 长音频分块器
+        self.audio_chunker = AudioChunker(
+            max_chunk_duration=settings.vad_max_segment_ms / 1000.0,
+            min_chunk_duration=5.0,
+            overlap_duration=0.5,
+        )
 
         # 通用文本纠错器 (pycorrector)
         self._text_corrector: Optional[TextCorrector] = None
@@ -45,6 +58,60 @@ class TranscriptionEngine:
         self._hotwords_loaded = False
         self._rules_loaded = False
         self._rectify_loaded = False
+
+    def warmup(self, duration: float = 1.0) -> Dict[str, Any]:
+        """预热模型，消除首次推理延迟
+
+        Args:
+            duration: 预热音频时长(秒)
+
+        Returns:
+            预热结果统计
+        """
+        import numpy as np
+
+        results = {
+            "backend": model_manager.backend.get_info()["name"],
+            "warmup_duration": duration,
+            "timings": {}
+        }
+
+        # 生成静默音频
+        sample_rate = 16000
+        samples = int(sample_rate * duration)
+        silent_audio = np.zeros(samples, dtype=np.float32)
+
+        logger.info(f"Warming up transcription engine ({duration}s audio)...")
+
+        # 预热 ASR 后端
+        backend = model_manager.backend
+        start_time = time.time()
+
+        try:
+            # 尝试调用后端的 warmup 方法
+            if hasattr(backend, 'warmup'):
+                backend.warmup(duration)
+            else:
+                # 直接进行一次推理
+                _ = backend.transcribe(silent_audio)
+
+            results["timings"]["asr"] = time.time() - start_time
+            logger.info(f"ASR warmup completed in {results['timings']['asr']:.2f}s")
+        except Exception as e:
+            logger.warning(f"ASR warmup failed: {e}")
+            results["timings"]["asr"] = -1
+
+        # 预热热词纠错器
+        start_time = time.time()
+        try:
+            if self._hotwords_loaded:
+                _ = self.corrector.correct("测试预热文本")
+                results["timings"]["hotword"] = time.time() - start_time
+        except Exception as e:
+            logger.warning(f"Hotword warmup failed: {e}")
+
+        logger.info("Engine warmup completed")
+        return results
 
     @property
     def llm_client(self) -> LLMClient:
@@ -205,6 +272,7 @@ class TranscriptionEngine:
         """标记并处理低置信度片段
 
         对低置信度的句子进行额外纠错处理。
+        支持 pycorrector 和 LLM 两种回退策略。
 
         Args:
             sentence_info: 句子信息列表
@@ -224,11 +292,35 @@ class TranscriptionEngine:
                 sent['low_confidence'] = True
                 text = sent.get('text', '')
 
-                if text and fallback == "pycorrector" and self.text_corrector:
+                if not text:
+                    continue
+
+                if fallback == "pycorrector" and self.text_corrector:
                     corrected, _ = self.text_corrector.correct(text)
                     if corrected != text:
-                        logger.debug(f"Low confidence ({confidence:.2f}) correction: {text!r} -> {corrected!r}")
+                        logger.debug(f"Low confidence ({confidence:.2f}) pycorrector: {text!r} -> {corrected!r}")
                         sent['text'] = corrected
+                        sent['correction_method'] = 'pycorrector'
+
+                elif fallback == "llm" and settings.llm_enable:
+                    # 使用 LLM 进行纠错 (异步转同步)
+                    try:
+                        import asyncio
+                        try:
+                            loop = asyncio.get_event_loop()
+                            corrected = loop.run_until_complete(
+                                self._apply_llm_polish(text, role="corrector")
+                            )
+                        except RuntimeError:
+                            corrected = asyncio.run(
+                                self._apply_llm_polish(text, role="corrector")
+                            )
+                        if corrected and corrected != text:
+                            logger.debug(f"Low confidence ({confidence:.2f}) LLM: {text!r} -> {corrected!r}")
+                            sent['text'] = corrected
+                            sent['correction_method'] = 'llm'
+                    except Exception as e:
+                        logger.warning(f"LLM correction failed for low confidence segment: {e}")
 
         return sentence_info
 
@@ -679,6 +771,139 @@ class TranscriptionEngine:
                 include_timestamp=True
             )
 
+        return result
+
+    def transcribe_long_audio(
+        self,
+        audio_input: Union[bytes, str, Path, np.ndarray],
+        with_speaker: bool = False,
+        apply_hotword: bool = True,
+        apply_llm: bool = False,
+        llm_role: str = "default",
+        hotwords: Optional[str] = None,
+        max_workers: int = 2,
+        sample_rate: int = 16000,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        长音频智能分块转写
+
+        使用 VAD 检测智能分割长音频，并行处理多个分块，
+        最后合并结果并去除重叠。
+
+        Args:
+            audio_input: 音频输入（文件路径、字节或 numpy 数组）
+            with_speaker: 是否进行说话人识别
+            apply_hotword: 是否应用热词纠错
+            apply_llm: 是否应用 LLM 润色
+            llm_role: LLM 角色
+            hotwords: 自定义热词
+            max_workers: 并行处理线程数
+            sample_rate: 采样率
+            **kwargs: 其他参数
+
+        Returns:
+            转写结果字典
+        """
+        from src.core.audio.preprocessor import AudioPreprocessor
+
+        # 加载音频为 numpy 数组
+        if isinstance(audio_input, np.ndarray):
+            audio = audio_input
+        elif isinstance(audio_input, (str, Path)):
+            preprocessor = AudioPreprocessor()
+            audio, sr = preprocessor.load(str(audio_input))
+            if sr != sample_rate:
+                import librosa
+                audio = librosa.resample(audio, orig_sr=sr, target_sr=sample_rate)
+        elif isinstance(audio_input, bytes):
+            import soundfile as sf
+            import io
+            audio, sr = sf.read(io.BytesIO(audio_input), dtype='float32')
+            if sr != sample_rate:
+                import librosa
+                audio = librosa.resample(audio, orig_sr=sr, target_sr=sample_rate)
+        else:
+            raise ValueError(f"Unsupported audio input type: {type(audio_input)}")
+
+        # 检查音频长度，短音频直接转写
+        duration = len(audio) / sample_rate
+        if duration <= self.audio_chunker.max_chunk_duration:
+            logger.info(f"Audio is short ({duration:.1f}s), using direct transcription")
+            return self.transcribe(
+                audio_input,
+                with_speaker=with_speaker,
+                apply_hotword=apply_hotword,
+                apply_llm=apply_llm,
+                llm_role=llm_role,
+                hotwords=hotwords,
+                **kwargs
+            )
+
+        logger.info(f"Long audio detected ({duration:.1f}s), using chunked transcription")
+
+        # 分割音频
+        chunks = self.audio_chunker.split(audio, sample_rate)
+
+        # 定义单块转写函数
+        def transcribe_chunk(chunk_audio: np.ndarray) -> Dict[str, Any]:
+            return self.transcribe(
+                chunk_audio,
+                with_speaker=with_speaker,
+                apply_hotword=apply_hotword,
+                apply_llm=False,  # LLM 在合并后统一处理
+                hotwords=hotwords,
+                **kwargs
+            )
+
+        # 并行处理分块
+        chunk_results = self.audio_chunker.process_parallel(
+            chunks, transcribe_chunk, max_workers=max_workers
+        )
+
+        # 合并结果
+        merged = self.audio_chunker.merge_results(chunk_results, sample_rate)
+
+        text = merged.get("text", "")
+        sentences = merged.get("sentences", [])
+
+        # 全文 LLM 润色
+        if apply_llm and text:
+            try:
+                if settings.llm_fulltext_enable:
+                    text = asyncio.get_event_loop().run_until_complete(
+                        self._apply_llm_fulltext_polish(text, max_chars=settings.llm_fulltext_max_chars)
+                    )
+                else:
+                    text = asyncio.get_event_loop().run_until_complete(
+                        self._apply_llm_polish(text, role=llm_role)
+                    )
+            except RuntimeError:
+                if settings.llm_fulltext_enable:
+                    text = asyncio.run(
+                        self._apply_llm_fulltext_polish(text, max_chars=settings.llm_fulltext_max_chars)
+                    )
+                else:
+                    text = asyncio.run(self._apply_llm_polish(text, role=llm_role))
+
+        # 说话人标注
+        if with_speaker and sentences:
+            sentences = self.speaker_labeler.label_speakers(sentences)
+
+        result = {
+            "text": text,
+            "sentences": sentences,
+            "duration": duration,
+            "chunks": len(chunks),
+        }
+
+        if with_speaker:
+            result["transcript"] = self.speaker_labeler.format_transcript(
+                sentences,
+                include_timestamp=True
+            )
+
+        logger.info(f"Long audio transcription completed: {len(chunks)} chunks, {duration:.1f}s")
         return result
 
     def transcribe_streaming(

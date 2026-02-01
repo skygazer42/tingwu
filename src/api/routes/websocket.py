@@ -1,6 +1,7 @@
 """WebSocket 实时转写路由"""
 import json
 import uuid
+import asyncio
 import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -20,6 +21,26 @@ def _check_streaming_support() -> bool:
     return backend.supports_streaming
 
 
+async def _heartbeat_task(websocket: WebSocket, interval: int, timeout: int):
+    """心跳任务
+
+    定期发送 ping 帧，检测连接存活。
+
+    Args:
+        websocket: WebSocket 连接
+        interval: 心跳间隔 (秒)
+        timeout: 心跳超时 (秒)
+    """
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            # 发送 ping 帧
+            await websocket.send_json({"type": "ping", "timestamp": asyncio.get_event_loop().time()})
+        except Exception as e:
+            logger.debug(f"Heartbeat stopped: {e}")
+            break
+
+
 @router.websocket("/ws/realtime")
 async def websocket_realtime(websocket: WebSocket):
     """
@@ -29,6 +50,8 @@ async def websocket_realtime(websocket: WebSocket):
     1. 客户端发送配置 (JSON): {"is_speaking": true, "mode": "2pass"}
     2. 客户端发送音频 (binary): PCM 16bit, 16kHz, mono
     3. 服务端返回结果 (JSON): {"mode": "2pass-online", "text": "...", "is_final": false}
+    4. 服务端定期发送心跳 (JSON): {"type": "ping", "timestamp": ...}
+    5. 客户端应回复心跳 (JSON): {"type": "pong"}
 
     注意: 流式转写需要 PyTorch 后端支持。
     如果配置了其他后端，将自动回退到 PyTorch。
@@ -51,8 +74,26 @@ async def websocket_realtime(websocket: WebSocket):
             "backend": backend_info['name'],
         })
 
+    # 发送连接确认和配置信息
+    await websocket.send_json({
+        "type": "connected",
+        "connection_id": connection_id,
+        "config": {
+            "chunk_size": settings.ws_chunk_size,
+            "heartbeat_interval": settings.ws_heartbeat_interval,
+            "compression": settings.ws_compression,
+        }
+    })
+
     frames = []
     frames_online = []
+
+    # 启动心跳任务
+    heartbeat_coro = None
+    if settings.ws_heartbeat_interval > 0:
+        heartbeat_coro = asyncio.create_task(
+            _heartbeat_task(websocket, settings.ws_heartbeat_interval, settings.ws_heartbeat_timeout)
+        )
 
     try:
         while True:
@@ -62,6 +103,11 @@ async def websocket_realtime(websocket: WebSocket):
             if "text" in message:
                 try:
                     config = json.loads(message["text"])
+
+                    # 处理心跳响应
+                    if config.get("type") == "pong":
+                        continue
+
                     _handle_config(state, config)
                 except json.JSONDecodeError:
                     logger.warning(f"Invalid JSON config: {message['text']}")
@@ -123,6 +169,13 @@ async def websocket_realtime(websocket: WebSocket):
     except Exception as e:
         logger.error(f"WebSocket error: {e}", exc_info=True)
     finally:
+        # 取消心跳任务
+        if heartbeat_coro:
+            heartbeat_coro.cancel()
+            try:
+                await heartbeat_coro
+            except asyncio.CancelledError:
+                pass
         ws_manager.disconnect(connection_id)
 
 

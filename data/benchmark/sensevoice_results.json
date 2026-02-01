@@ -1,0 +1,52 @@
+{
+  "device": "cpu",
+  "audio_files": [
+    "data/benchmark/test_hotword.mp3",
+    "data/benchmark/test_medium.mp3",
+    "data/benchmark/test_short.mp3"
+  ],
+  "benchmarks": [
+    {
+      "model_name": "SenseVoice-Small",
+      "supported": true,
+      "error": null,
+      "total_audio_duration": 25.680000000000003,
+      "total_inference_time": 1.04600405400015,
+      "avg_rtf": 0.040732245093463786,
+      "avg_memory_mb": 0.3333333333333333,
+      "avg_cer": null,
+      "results": [
+        {
+          "audio_file": "data/benchmark/test_hotword.mp3",
+          "audio_duration": 9.576,
+          "inference_time": 0.36647116199992524,
+          "rtf": 0.038269753759390686,
+          "memory_mb": 0.0,
+          "text": "<|zh|><|NEUTRAL|><|Speech|><|woitn|>请问贵公司的客服电话是多少我想咨询一下产品售后服务另外关于产品保修期限是多久",
+          "cer": null,
+          "error": null
+        },
+        {
+          "audio_file": "data/benchmark/test_medium.mp3",
+          "audio_duration": 12.792,
+          "inference_time": 0.44874926200009213,
+          "rtf": 0.03508046138212102,
+          "memory_mb": 0.75,
+          "text": "<|zh|><|NEUTRAL|><|Speech|><|woitn|>人工智能技术正在深刻改变我们的生活方式从智能手机到自动驾驶汽车无处不在语音识别技术已经成为人机交互的重要方式",
+          "cer": null,
+          "error": null
+        },
+        {
+          "audio_file": "data/benchmark/test_short.mp3",
+          "audio_duration": 3.312,
+          "inference_time": 0.2307836300001327,
+          "rtf": 0.06968104770535408,
+          "memory_mb": 0.25,
+          "text": "<|zh|><|HAPPY|><|Speech|><|woitn|>今天天气真好适合出去散步",
+          "cer": null,
+          "error": null
+        }
+      ]
+    }
+  ]
+}

@@ -2,11 +2,14 @@
 统一文本后处理器
 
 整合 ITN、繁简转换、标点转换、填充词移除、全角归一化、中英文间距等功能。
+支持并行处理多个文本。
 """
 
 __all__ = ['TextPostProcessor', 'PostProcessorSettings']
 
-from typing import Optional
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from typing import Optional, List
 from dataclasses import dataclass
 
 from .chinese_itn import ChineseITN
@@ -246,6 +249,54 @@ class TextPostProcessor:
             punc_merge_enable=getattr(config, 'punc_merge_enable', False),
         )
         return cls(settings)
+
+    def process_batch(self, texts: List[str], max_workers: int = 4) -> List[str]:
+        """
+        批量并行处理多个文本
+
+        使用线程池并行处理多个文本，提升批量处理效率。
+
+        Args:
+            texts: 文本列表
+            max_workers: 最大工作线程数
+
+        Returns:
+            处理后的文本列表
+        """
+        if not texts:
+            return []
+
+        if len(texts) == 1:
+            return [self.process(texts[0])]
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            results = list(executor.map(self.process, texts))
+
+        return results
+
+    async def process_batch_async(self, texts: List[str], max_concurrent: int = 4) -> List[str]:
+        """
+        异步批量处理多个文本
+
+        Args:
+            texts: 文本列表
+            max_concurrent: 最大并发数
+
+        Returns:
+            处理后的文本列表
+        """
+        if not texts:
+            return []
+
+        if len(texts) == 1:
+            return [self.process(texts[0])]
+
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
+            tasks = [loop.run_in_executor(executor, self.process, text) for text in texts]
+            results = await asyncio.gather(*tasks)
+
+        return list(results)
 
 
 if __name__ == '__main__':

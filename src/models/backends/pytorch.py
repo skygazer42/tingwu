@@ -204,7 +204,51 @@ class PyTorchBackend(ASRBackend):
         self._asr_model_online = None
         self._asr_model_with_spk = None
         self._loaded = False
+
+        # 清理 GPU 内存
+        self._cleanup_gpu_memory()
         logger.info("PyTorch backend models unloaded")
+
+    def _cleanup_gpu_memory(self) -> None:
+        """清理 GPU 内存"""
+        if self.device == "cuda":
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()
+                    logger.debug("GPU memory cache cleared")
+            except Exception as e:
+                logger.warning(f"Failed to clear GPU cache: {e}")
+
+    def warmup(self, duration: float = 1.0) -> None:
+        """预热模型，消除首次推理延迟
+
+        Args:
+            duration: 预热音频时长(秒)
+        """
+        import numpy as np
+
+        # 生成静默音频进行预热
+        sample_rate = 16000
+        samples = int(sample_rate * duration)
+        silent_audio = np.zeros(samples, dtype=np.float32)
+
+        logger.info(f"Warming up PyTorch models with {duration}s silent audio...")
+
+        try:
+            # 预热离线模型
+            _ = self.asr_model.generate(input=silent_audio)
+
+            # 预热在线模型
+            _ = self.asr_model_online.generate(input=silent_audio, cache={}, is_final=True)
+
+            # 清理 GPU 内存
+            self._cleanup_gpu_memory()
+
+            logger.info("PyTorch warmup completed")
+        except Exception as e:
+            logger.warning(f"PyTorch warmup failed: {e}")
 
     def get_info(self) -> Dict[str, Any]:
         """获取后端信息"""

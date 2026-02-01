@@ -3,10 +3,12 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 
 from src.config import settings
 from src.api import api_router
-from src.api.schemas import HealthResponse
+from src.api.schemas import HealthResponse, MetricsResponse
+from src.utils.service_metrics import metrics
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,6 +25,16 @@ async def lifespan(app: FastAPI):
     # 加载所有热词相关文件
     from src.core.engine import transcription_engine
     transcription_engine.load_all()
+
+    # 模型预热
+    if settings.warmup_on_startup:
+        try:
+            warmup_result = transcription_engine.warmup(
+                duration=settings.warmup_audio_duration
+            )
+            logger.info(f"Warmup result: {warmup_result}")
+        except Exception as e:
+            logger.warning(f"Warmup failed: {e}")
 
     # 启动热词文件监视器
     if settings.hotword_watch_enable:
@@ -85,3 +97,34 @@ async def root():
         "version": settings.version,
         "docs": "/docs",
     }
+
+
+@app.get("/metrics", tags=["system"])
+async def get_metrics():
+    """获取服务指标 (JSON 格式)"""
+    stats = metrics.get_stats()
+
+    # 尝试获取 LLM 缓存统计
+    llm_cache_stats = {}
+    try:
+        from src.core.engine import transcription_engine
+        if transcription_engine._llm_client:
+            llm_cache_stats = transcription_engine._llm_client.get_cache_stats()
+    except Exception:
+        pass
+
+    return MetricsResponse(
+        uptime_seconds=stats["uptime_seconds"],
+        total_requests=stats["total_requests"],
+        successful_requests=stats["successful_requests"],
+        failed_requests=stats["failed_requests"],
+        total_audio_seconds=stats["total_audio_seconds"],
+        avg_rtf=stats["avg_rtf"],
+        llm_cache_stats=llm_cache_stats,
+    )
+
+
+@app.get("/metrics/prometheus", tags=["system"], response_class=PlainTextResponse)
+async def get_metrics_prometheus():
+    """获取服务指标 (Prometheus 格式)"""
+    return metrics.to_prometheus()

@@ -6,6 +6,7 @@ from fastapi import WebSocket
 
 from src.config import settings
 from src.core.text_processor.stream_merger import StreamTextMerger
+from src.utils.service_metrics import metrics
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +25,46 @@ class ConnectionState:
         error_tolerance=settings.stream_dedup_tolerance,
     ))
 
+    # 自适应分块相关
+    chunk_size: int = field(default_factory=lambda: settings.ws_chunk_size)
+    latency_samples: list = field(default_factory=list)
+    adaptive_chunk_enable: bool = True
+
     def reset(self):
         """重置状态"""
         self.is_speaking = False
         self.asr_cache = {}
         self.vad_cache = {}
         self.text_merger.reset()
+
+    def update_latency(self, latency_ms: float):
+        """更新延迟样本并自适应调整分块大小
+
+        Args:
+            latency_ms: 最近一次处理的延迟(毫秒)
+        """
+        if not self.adaptive_chunk_enable:
+            return
+
+        # 保留最近 10 个样本
+        self.latency_samples.append(latency_ms)
+        if len(self.latency_samples) > 10:
+            self.latency_samples.pop(0)
+
+        if len(self.latency_samples) < 3:
+            return
+
+        avg_latency = sum(self.latency_samples) / len(self.latency_samples)
+
+        # 根据平均延迟调整分块大小
+        # 延迟高 -> 减小分块  延迟低 -> 增大分块
+        min_chunk = 4800   # 300ms @ 16kHz
+        max_chunk = 19200  # 1200ms @ 16kHz
+
+        if avg_latency > 500:  # 延迟 > 500ms，减小分块
+            self.chunk_size = max(min_chunk, int(self.chunk_size * 0.8))
+        elif avg_latency < 200:  # 延迟 < 200ms，增大分块
+            self.chunk_size = min(max_chunk, int(self.chunk_size * 1.2))
 
 
 class WebSocketManager:
@@ -43,6 +78,7 @@ class WebSocketManager:
         """添加新连接"""
         self.connections[connection_id] = websocket
         self.states[connection_id] = ConnectionState()
+        metrics.ws_connect()
         logger.info(f"WebSocket connected: {connection_id}")
 
     def disconnect(self, connection_id: str):
@@ -51,6 +87,7 @@ class WebSocketManager:
             del self.connections[connection_id]
         if connection_id in self.states:
             del self.states[connection_id]
+        metrics.ws_disconnect()
         logger.info(f"WebSocket disconnected: {connection_id}")
 
     def get_state(self, connection_id: str) -> Optional[ConnectionState]:

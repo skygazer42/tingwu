@@ -36,6 +36,12 @@ class Settings(BaseSettings):
 
     # ONNX 后端配置
     onnx_quantize: bool = True  # 启用 INT8 量化
+    onnx_intra_threads: int = 4  # ONNX 推理线程数
+    onnx_inter_threads: int = 1  # ONNX 并行操作数
+
+    # 模型预热配置
+    warmup_on_startup: bool = True  # 启动时预热模型
+    warmup_audio_duration: float = 1.0  # 预热音频时长(秒)
 
     # SenseVoice 后端配置
     sensevoice_model: str = "iic/SenseVoiceSmall"
@@ -53,17 +59,23 @@ class Settings(BaseSettings):
     hotword_injection_max: int = 50             # 最大注入热词数
     hotword_watch_enable: bool = True           # 热词文件热加载
     hotword_watch_debounce: float = 3.0         # 热加载防抖秒数
+    hotword_use_faiss: bool = False             # 使用 FAISS 向量索引 (大规模热词加速)
+    hotword_faiss_index_type: str = "IVFFlat"   # FAISS 索引类型 (IVFFlat, HNSW)
 
     # LLM 优化配置 (可选)
     llm_enable: bool = False
     llm_model: str = "qwen2.5:7b"
     llm_base_url: str = "http://localhost:11434"
+    llm_backend: str = "auto"  # auto, ollama, openai, vllm
     llm_role: str = "default"  # default, translator, code, corrector
     llm_context_sentences: int = 1  # 上下文句子数 (用于多句润色)
     llm_fulltext_enable: bool = False  # 全文纠错模式
     llm_fulltext_max_chars: int = 2000  # 全文最大字数
     llm_batch_size: int = 5  # 批量润色句子数
     llm_max_tokens: int = 4096  # LLM 上下文 token 限制
+    llm_cache_enable: bool = True  # LLM 响应缓存
+    llm_cache_size: int = 1000  # 缓存大小
+    llm_cache_ttl: int = 3600  # 缓存 TTL (秒)
 
     # 通用文本纠错配置 (pycorrector)
     text_correct_enable: bool = False            # 通用文本纠错开关
@@ -96,6 +108,9 @@ class Settings(BaseSettings):
     # WebSocket 配置
     ws_chunk_size: int = 9600  # 600ms @ 16kHz
     ws_chunk_interval: int = 10
+    ws_compression: bool = True  # 启用 WebSocket 压缩
+    ws_heartbeat_interval: int = 30  # 心跳间隔 (秒)
+    ws_heartbeat_timeout: int = 60  # 心跳超时 (秒)
 
     # 音频预处理配置
     audio_normalize_enable: bool = True          # 音量归一化
@@ -104,9 +119,11 @@ class Settings(BaseSettings):
     audio_silence_threshold_db: float = -40.0    # 静音阈值 (dB)
     audio_denoise_enable: bool = False           # 降噪开关
     audio_denoise_prop: float = 0.8              # 降噪强度 (0-1)
-    audio_denoise_backend: str = "noisereduce"   # 降噪后端: noisereduce | deepfilter
+    audio_denoise_backend: str = "noisereduce"   # 降噪后端: noisereduce | deepfilter | deepfilter3
     audio_vocal_separate_enable: bool = False    # 人声分离开关
     audio_vocal_separate_model: str = "htdemucs" # 人声分离模型
+    audio_adaptive_preprocess: bool = False      # 自适应预处理 (根据 SNR 智能选择)
+    audio_snr_threshold: float = 20.0            # SNR 阈值 (低于此值启用降噪)
 
     # 流式文本去重配置
     stream_dedup_enable: bool = True             # 启用流式去重

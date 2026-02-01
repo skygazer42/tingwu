@@ -30,6 +30,8 @@ def get_audio_preprocessor() -> AudioPreprocessor:
             vocal_separate_enable=settings.audio_vocal_separate_enable,
             vocal_separate_model=settings.audio_vocal_separate_model,
             device=settings.device,
+            adaptive_enable=settings.audio_adaptive_preprocess,
+            snr_threshold=settings.audio_snr_threshold,
         )
     return _audio_preprocessor
 

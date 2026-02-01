@@ -32,6 +32,8 @@ class ONNXBackend(ASRBackend):
         device: str = "cpu",
         ncpu: int = 4,
         quantize: bool = True,
+        intra_threads: int = 4,
+        inter_threads: int = 1,
         model_dir: Optional[str] = None,
         vad_model_dir: Optional[str] = None,
         punc_model_dir: Optional[str] = None,
@@ -43,6 +45,8 @@ class ONNXBackend(ASRBackend):
             device: 设备类型 ("cpu" 或 "cuda")
             ncpu: CPU 线程数
             quantize: 是否启用 INT8 量化
+            intra_threads: ONNX 推理线程数
+            inter_threads: ONNX 并行操作数
             model_dir: ASR 模型路径（默认自动下载）
             vad_model_dir: VAD 模型路径（默认自动下载）
             punc_model_dir: 标点模型路径（默认自动下载）
@@ -50,6 +54,8 @@ class ONNXBackend(ASRBackend):
         self.device = device
         self.ncpu = ncpu
         self.quantize = quantize
+        self.intra_threads = intra_threads
+        self.inter_threads = inter_threads
         self.model_dir = model_dir or ONNX_MODEL_PARAFORMER
         self.vad_model_dir = vad_model_dir or ONNX_MODEL_VAD
         self.punc_model_dir = punc_model_dir or ONNX_MODEL_PUNC
@@ -70,6 +76,17 @@ class ONNXBackend(ASRBackend):
             raise ImportError(
                 "ONNX 后端需要安装 funasr-onnx: pip install funasr-onnx onnxruntime"
             )
+
+        # 配置 ONNX Runtime 线程
+        try:
+            import onnxruntime as ort
+            sess_options = ort.SessionOptions()
+            sess_options.intra_op_num_threads = self.intra_threads
+            sess_options.inter_op_num_threads = self.inter_threads
+            sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            logger.info(f"ONNX Runtime threads: intra={self.intra_threads}, inter={self.inter_threads}")
+        except Exception as e:
+            logger.warning(f"Failed to configure ONNX Runtime options: {e}")
 
         logger.info(f"Loading ONNX ASR model: {self.model_dir}")
         logger.info(f"Quantization: {self.quantize}, Device: {self.device}")
@@ -96,6 +113,34 @@ class ONNXBackend(ASRBackend):
 
         self._loaded = True
         logger.info("ONNX backend loaded successfully")
+
+    def warmup(self, duration: float = 1.0) -> None:
+        """预热模型，消除首次推理延迟
+
+        Args:
+            duration: 预热音频时长(秒)
+        """
+        self._ensure_loaded()
+
+        import numpy as np
+
+        # 生成静默音频进行预热
+        sample_rate = 16000
+        samples = int(sample_rate * duration)
+        silent_audio = np.zeros(samples, dtype=np.float32)
+
+        logger.info(f"Warming up ONNX models with {duration}s silent audio...")
+
+        try:
+            # 预热 ASR 模型
+            _ = self._model(silent_audio)
+
+            # 预热标点模型
+            _ = self._punc_model("测试预热")
+
+            logger.info("ONNX warmup completed")
+        except Exception as e:
+            logger.warning(f"ONNX warmup failed: {e}")
 
     def _ensure_loaded(self):
         """确保模型已加载"""
