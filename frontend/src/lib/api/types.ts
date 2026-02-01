@@ -1,0 +1,117 @@
+// API 类型定义 - 基于后端 src/api/schemas.py
+
+export interface SentenceInfo {
+  text: string
+  start: number  // 毫秒
+  end: number    // 毫秒
+  speaker?: string
+  speaker_id?: number
+}
+
+export interface TranscribeResponse {
+  code: number
+  text: string
+  sentences: SentenceInfo[]
+  transcript?: string
+  raw_text?: string
+}
+
+export interface BatchTranscribeItem {
+  index: number
+  filename: string
+  success: boolean
+  result?: TranscribeResponse
+  error?: string
+}
+
+export interface BatchTranscribeResponse {
+  code: number
+  total: number
+  success_count: number
+  failed_count: number
+  results: BatchTranscribeItem[]
+}
+
+export interface HealthResponse {
+  status: string
+  version: string
+}
+
+export interface MetricsResponse {
+  uptime_seconds: number
+  total_requests: number
+  successful_requests: number
+  failed_requests: number
+  total_audio_seconds: number
+  avg_rtf: number
+  llm_cache_stats: Record<string, unknown>
+}
+
+// 热词相关
+export interface HotwordsListResponse {
+  code: number
+  hotwords: string[]
+  count: number
+}
+
+export interface HotwordsUpdateRequest {
+  hotwords: string[]
+}
+
+export interface HotwordsUpdateResponse {
+  code: number
+  count: number
+  message: string
+}
+
+// 配置相关
+export interface ConfigResponse {
+  config: Record<string, unknown>
+}
+
+export interface ConfigAllResponse {
+  config: Record<string, unknown>
+  mutable_keys: string[]
+}
+
+export interface ConfigUpdateRequest {
+  updates: Record<string, unknown>
+}
+
+// 转写请求选项
+export interface TranscribeOptions {
+  with_speaker?: boolean
+  apply_hotword?: boolean
+  apply_llm?: boolean
+  llm_role?: 'default' | 'translator' | 'code' | 'corrector'
+  hotwords?: string
+}
+
+// WebSocket 消息类型
+export interface WSConnectedMessage {
+  type: 'connected'
+  connection_id: string
+  config: {
+    chunk_size: number
+    heartbeat_interval: number
+    compression: boolean
+  }
+}
+
+export interface WSResultMessage {
+  mode: '2pass-online' | '2pass-offline' | 'online' | 'offline'
+  text: string
+  is_final: boolean
+}
+
+export interface WSPingMessage {
+  type: 'ping'
+  timestamp: number
+}
+
+export interface WSWarningMessage {
+  warning: string
+  backend: string
+}
+
+export type WSMessage = WSConnectedMessage | WSResultMessage | WSPingMessage | WSWarningMessage

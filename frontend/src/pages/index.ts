@@ -1,0 +1,5 @@
+export { default as TranscribePage } from './TranscribePage'
+export { default as RealtimePage } from './RealtimePage'
+export { default as HotwordsPage } from './HotwordsPage'
+export { default as ConfigPage } from './ConfigPage'
+export { default as MonitorPage } from './MonitorPage'
