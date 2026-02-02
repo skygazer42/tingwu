@@ -22,7 +22,7 @@ ASR 模型性能对比 Benchmark 脚本
 使用方法:
     python scripts/benchmark_asr.py --audio data/benchmark/test.wav
     python scripts/benchmark_asr.py --audio data/benchmark/ --ref data/benchmark/ref.txt
-    python scripts/benchmark_asr.py --audio data/benchmark/ --models backend-pytorch backend-onnx
+    python scripts/benchmark_asr.py --audio data/benchmark/ --models backend-pytorch backend-onnx backend-qwen3 backend-vibevoice backend-router
 """
 
 import argparse
@@ -371,14 +371,64 @@ class ASRBenchmarker:
 
         try:
             from src.models.backends import get_backend
+            from src.config import settings as app_settings
 
             if model_name not in self.models:
                 print(f"  加载后端 {backend_type}...")
-                backend = get_backend(
-                    backend_type=backend_type,
-                    device=self.device,
-                    ncpu=4,
-                )
+                # Remote backends need extra connection info; pull from app settings
+                # so benchmarking matches real service wiring.
+                kwargs: Dict[str, Any] = {
+                    "backend_type": backend_type,
+                    "device": self.device,
+                    "ncpu": 4,
+                }
+                if backend_type == "qwen3":
+                    kwargs.update(
+                        base_url=app_settings.qwen3_asr_base_url,
+                        model=app_settings.qwen3_asr_model,
+                        api_key=app_settings.qwen3_asr_api_key,
+                        timeout_s=app_settings.qwen3_asr_timeout_s,
+                    )
+                elif backend_type == "vibevoice":
+                    kwargs.update(
+                        base_url=app_settings.vibevoice_asr_base_url,
+                        model=app_settings.vibevoice_asr_model,
+                        api_key=app_settings.vibevoice_asr_api_key,
+                        timeout_s=app_settings.vibevoice_asr_timeout_s,
+                        use_chat_completions_fallback=app_settings.vibevoice_asr_use_chat_completions_fallback,
+                    )
+                elif backend_type == "router":
+                    def _mk_remote(bt: str):
+                        if bt == "qwen3":
+                            return get_backend(
+                                backend_type="qwen3",
+                                base_url=app_settings.qwen3_asr_base_url,
+                                model=app_settings.qwen3_asr_model,
+                                api_key=app_settings.qwen3_asr_api_key,
+                                timeout_s=app_settings.qwen3_asr_timeout_s,
+                            )
+                        if bt == "vibevoice":
+                            return get_backend(
+                                backend_type="vibevoice",
+                                base_url=app_settings.vibevoice_asr_base_url,
+                                model=app_settings.vibevoice_asr_model,
+                                api_key=app_settings.vibevoice_asr_api_key,
+                                timeout_s=app_settings.vibevoice_asr_timeout_s,
+                                use_chat_completions_fallback=app_settings.vibevoice_asr_use_chat_completions_fallback,
+                            )
+                        raise ValueError(f\"Unsupported router backend type: {bt}\")
+
+                    short_backend = _mk_remote(app_settings.router_short_backend)
+                    long_backend = _mk_remote(app_settings.router_long_backend)
+                    kwargs = {
+                        "backend_type": "router",
+                        "short_backend": short_backend,
+                        "long_backend": long_backend,
+                        "long_audio_threshold_s": app_settings.router_long_audio_threshold_s,
+                        "force_vibevoice_when_with_speaker": app_settings.router_force_vibevoice_when_with_speaker,
+                    }
+
+                backend = get_backend(**kwargs)
                 backend.load()
                 self.models[model_name] = backend
 
@@ -569,7 +619,8 @@ def main():
     parser.add_argument("--models", "-m", nargs="+",
                        default=["paraformer", "onnx", "nano", "sensevoice"],
                        choices=["paraformer", "onnx", "nano", "sensevoice", "all",
-                                "backend-pytorch", "backend-onnx", "backend-sensevoice"],
+                                "backend-pytorch", "backend-onnx", "backend-sensevoice",
+                                "backend-qwen3", "backend-vibevoice", "backend-router"],
                        help="要测试的模型 (backend-* 使用新后端抽象层)")
     parser.add_argument("--no-warmup", action="store_true", help="跳过预热")
     parser.add_argument("--output", "-o", help="输出 JSON 文件路径")

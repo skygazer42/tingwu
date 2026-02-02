@@ -114,6 +114,51 @@ npm run dev
 ./scripts/start.sh stop
 ```
 
+### 方式四：HuggingFace 模型自部署（vLLM 远程后端）
+
+如果你希望把模型推理放到独立服务（本地/内网），TingWu 支持通过 vLLM 的 OpenAI 兼容接口接入 **Qwen3-ASR** 和 **VibeVoice-ASR**。
+
+1) 启动 Qwen3-ASR（自动从 HuggingFace 下载权重）
+
+```bash
+pip install -U "qwen-asr[vllm]"
+qwen-asr-serve Qwen/Qwen3-ASR-1.7B --host 0.0.0.0 --port 9001 --gpu-memory-utilization 0.8
+```
+
+2) 启动 VibeVoice-ASR（官方 vLLM Docker，自动从 HuggingFace 下载）
+
+```bash
+git clone https://github.com/microsoft/VibeVoice.git
+cd VibeVoice
+
+docker run -d --gpus all --name vibevoice-vllm \
+  --ipc=host \
+  -p 9002:8000 \
+  -e VIBEVOICE_FFMPEG_MAX_CONCURRENCY=64 \
+  -e PYTORCH_ALLOC_CONF=expandable_segments:True \
+  -v $(pwd):/app \
+  -w /app \
+  --entrypoint bash \
+  vllm/vllm-openai:latest \
+  -c "python3 /app/vllm_plugin/scripts/start_server.py"
+```
+
+3) 配置 TingWu（`.env`）
+
+```bash
+ASR_BACKEND=router
+QWEN3_ASR_BASE_URL=http://localhost:9001
+QWEN3_ASR_MODEL=Qwen/Qwen3-ASR-1.7B
+VIBEVOICE_ASR_BASE_URL=http://localhost:9002
+VIBEVOICE_ASR_MODEL=vibevoice
+VIBEVOICE_ASR_USE_CHAT_COMPLETIONS_FALLBACK=true
+```
+
+说明：
+- `ASR_BACKEND=qwen3`：直接走 Qwen3-ASR
+- `ASR_BACKEND=vibevoice`：直接走 VibeVoice-ASR（支持 `with_speaker=true`）
+- `ASR_BACKEND=router`：短音频默认 Qwen3，长音频/`with_speaker=true` 默认 VibeVoice
+
 ## 前端界面
 
 基于 React + TypeScript + Tailwind CSS + shadcn/ui 构建的现代化前端。
@@ -244,13 +289,15 @@ curl -X POST http://localhost:8000/config/reload
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
-| ASR_BACKEND | ASR 后端 (pytorch/onnx/sensevoice) | pytorch |
+| ASR_BACKEND | ASR 后端 (pytorch/onnx/sensevoice/gguf/qwen3/vibevoice/router) | pytorch |
 | ASR_MODEL | 离线 ASR 模型 | paraformer-zh |
 | VAD_MODEL | VAD 模型 | fsmn-vad |
 | PUNC_MODEL | 标点模型 | ct-punc-c |
 | SPK_MODEL | 说话人模型 | cam++ |
 
 > 模型会自动从 [ModelScope](https://modelscope.cn) 下载并缓存。
+>
+> 远程后端（qwen3/vibevoice/router）相关环境变量见 `.env.example`，或参考上面的「方式四：HuggingFace 模型自部署」。
 
 ### 热词配置
 

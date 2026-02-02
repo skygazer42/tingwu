@@ -54,19 +54,19 @@ class Settings(BaseSettings):
     gguf_tokens_path: str = "models/tokens.txt"
     gguf_lib_dir: str = "models/bin"  # llama.cpp 库目录
 
-    # Remote ASR 后端配置（vLLM OpenAI-compatible server）
-    # Qwen3-ASR: /v1/audio/transcriptions
+    # Remote ASR 后端配置（自建 vLLM OpenAI-compatible server）
+    # Qwen3-ASR: /v1/chat/completions (audio_url)
     qwen3_asr_base_url: str = "http://localhost:9001"
     qwen3_asr_model: str = "Qwen/Qwen3-ASR-1.7B"
     qwen3_asr_api_key: str = "EMPTY"
     qwen3_asr_timeout_s: float = 60.0
 
-    # VibeVoice-ASR: /v1/audio/transcriptions (preferred), optional /v1/chat/completions fallback
+    # VibeVoice-ASR: /v1/chat/completions (audio_url), returns JSON segments with timestamps + speaker id
     vibevoice_asr_base_url: str = "http://localhost:9002"
     vibevoice_asr_model: str = "vibevoice"
     vibevoice_asr_api_key: str = "EMPTY"
     vibevoice_asr_timeout_s: float = 600.0
-    vibevoice_asr_use_chat_completions_fallback: bool = False
+    vibevoice_asr_use_chat_completions_fallback: bool = True
 
     # Router 后端：根据音频时长/是否需要说话人自动选择后端
     router_long_audio_threshold_s: float = 60.0

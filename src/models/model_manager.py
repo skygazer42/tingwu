@@ -61,12 +61,58 @@ class ModelManager:
                     model=settings.sensevoice_model,
                     language=settings.sensevoice_language,
                 )
+            elif backend_type == "gguf":
+                self._backend = get_backend(
+                    backend_type="gguf",
+                    encoder_path=settings.gguf_encoder_path,
+                    ctc_path=settings.gguf_ctc_path,
+                    decoder_path=settings.gguf_decoder_path,
+                    tokens_path=settings.gguf_tokens_path,
+                    lib_dir=settings.gguf_lib_dir,
+                )
+            elif backend_type == "qwen3":
+                self._backend = self._build_remote_backend("qwen3")
+            elif backend_type == "vibevoice":
+                self._backend = self._build_remote_backend("vibevoice")
+            elif backend_type == "router":
+                from src.models.backends.router import RouterBackend
+
+                short_backend = self._build_remote_backend(settings.router_short_backend)
+                long_backend = self._build_remote_backend(settings.router_long_backend)
+                self._backend = RouterBackend(
+                    short_backend=short_backend,
+                    long_backend=long_backend,
+                    long_audio_threshold_s=settings.router_long_audio_threshold_s,
+                    force_vibevoice_when_with_speaker=settings.router_force_vibevoice_when_with_speaker,
+                )
             else:
                 raise ValueError(f"Unknown backend type: {backend_type}")
 
             logger.info(f"ASR backend initialized: {self._backend.get_info()}")
 
         return self._backend
+
+    @staticmethod
+    def _build_remote_backend(backend_type: str) -> ASRBackend:
+        """Build a remote backend from Settings."""
+        if backend_type == "qwen3":
+            return get_backend(
+                backend_type="qwen3",
+                base_url=settings.qwen3_asr_base_url,
+                model=settings.qwen3_asr_model,
+                api_key=settings.qwen3_asr_api_key,
+                timeout_s=settings.qwen3_asr_timeout_s,
+            )
+        if backend_type == "vibevoice":
+            return get_backend(
+                backend_type="vibevoice",
+                base_url=settings.vibevoice_asr_base_url,
+                model=settings.vibevoice_asr_model,
+                api_key=settings.vibevoice_asr_api_key,
+                timeout_s=settings.vibevoice_asr_timeout_s,
+                use_chat_completions_fallback=settings.vibevoice_asr_use_chat_completions_fallback,
+            )
+        raise ValueError(f"Unknown remote backend type: {backend_type}")
 
     @property
     def loader(self) -> ASRModelLoader:

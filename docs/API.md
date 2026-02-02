@@ -22,7 +22,7 @@
 
 TingWu 是一个高性能的中文语音转写服务，支持：
 
-- **多后端支持**: PyTorch、ONNX、SenseVoice、GGUF
+- **多后端支持**: PyTorch、ONNX、SenseVoice、GGUF、Qwen3-ASR(远程)、VibeVoice-ASR(远程)、Router
 - **实时流式转写**: WebSocket 双向识别
 - **说话人识别**: 自动区分多人对话
 - **热词纠错**: 支持动态热词注入
@@ -1052,7 +1052,7 @@ interface MetricsResponse {
 ### v1.0.0 (2026-02-02)
 
 - 初始版本发布
-- 支持 PyTorch、ONNX、SenseVoice、GGUF 四种后端
+- 支持 PyTorch、ONNX、SenseVoice、GGUF、Qwen3-ASR(远程)、VibeVoice-ASR(远程)、Router
 - 实时流式转写 (WebSocket)
 - 热词管理和 LLM 润色
 - 完整的配置管理接口
