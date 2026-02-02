@@ -1,0 +1,94 @@
+{
+  "device": "cpu",
+  "audio_files": [
+    "data\\benchmark\\test_hotword.mp3",
+    "data\\benchmark\\test_medium.mp3",
+    "data\\benchmark\\test_short.mp3"
+  ],
+  "benchmarks": [
+    {
+      "model_name": "backend-qwen3",
+      "supported": true,
+      "error": null,
+      "total_audio_duration": 25.680000000000003,
+      "total_inference_time": 22.44018109999888,
+      "avg_rtf": 0.8738388278815763,
+      "avg_memory_mb": 0.033854166666666664,
+      "avg_cer": null,
+      "results": [
+        {
+          "audio_file": "data\\benchmark\\test_hotword.mp3",
+          "audio_duration": 9.576,
+          "inference_time": 13.146660999998858,
+          "rtf": 1.3728760442772407,
+          "memory_mb": 0.0,
+          "text": "请问贵公司的客服电话是多少？我想咨询一下产品售后服务。另外，关于产品保修期限是多久？",
+          "cer": null,
+          "error": null
+        },
+        {
+          "audio_file": "data\\benchmark\\test_medium.mp3",
+          "audio_duration": 12.792,
+          "inference_time": 9.203347800001211,
+          "rtf": 0.7194612101314267,
+          "memory_mb": 0.08203125,
+          "text": "人工智能技术正在深刻改变我们的生活方式。从智能手机到自动驾驶汽车，无处不在。语音识别技术已经成为人机交互的重要方式。",
+          "cer": null,
+          "error": null
+        },
+        {
+          "audio_file": "data\\benchmark\\test_short.mp3",
+          "audio_duration": 3.312,
+          "inference_time": 0.09017229999881238,
+          "rtf": 0.027225935989979584,
+          "memory_mb": 0.01953125,
+          "text": "今天天气真好，适合出去散步。",
+          "cer": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "model_name": "backend-router",
+      "supported": true,
+      "error": null,
+      "total_audio_duration": 25.680000000000003,
+      "total_inference_time": 0.47584960000313004,
+      "avg_rtf": 0.018529968847473908,
+      "avg_memory_mb": 0.048177083333333336,
+      "avg_cer": null,
+      "results": [
+        {
+          "audio_file": "data\\benchmark\\test_hotword.mp3",
+          "audio_duration": 9.576,
+          "inference_time": 0.16233290000309353,
+          "rtf": 0.01695205722672238,
+          "memory_mb": 0.05078125,
+          "text": "请问贵公司的客服电话是多少？我想咨询一下产品售后服务。另外，关于产品保修期限是多久？",
+          "cer": null,
+          "error": null
+        },
+        {
+          "audio_file": "data\\benchmark\\test_medium.mp3",
+          "audio_duration": 12.792,
+          "inference_time": 0.22726440000042203,
+          "rtf": 0.01776613508446076,
+          "memory_mb": 0.046875,
+          "text": "人工智能技术正在深刻改变我们的生活方式。从智能手机到自动驾驶汽车，无处不在。语音识别技术已经成为人机交互的重要方式。",
+          "cer": null,
+          "error": null
+        },
+        {
+          "audio_file": "data\\benchmark\\test_short.mp3",
+          "audio_duration": 3.312,
+          "inference_time": 0.08625229999961448,
+          "rtf": 0.02604236111099471,
+          "memory_mb": 0.046875,
+          "text": "今天天气真好，适合出去散步。",
+          "cer": null,
+          "error": null
+        }
+      ]
+    }
+  ]
+}

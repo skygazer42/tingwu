@@ -416,7 +416,7 @@ class ASRBenchmarker:
                                 timeout_s=app_settings.vibevoice_asr_timeout_s,
                                 use_chat_completions_fallback=app_settings.vibevoice_asr_use_chat_completions_fallback,
                             )
-                        raise ValueError(f\"Unsupported router backend type: {bt}\")
+                        raise ValueError(f"Unsupported router backend type: {bt}")
 
                     short_backend = _mk_remote(app_settings.router_short_backend)
                     long_backend = _mk_remote(app_settings.router_long_backend)

@@ -1,0 +1,30 @@
+{
+  "device": "cpu",
+  "audio_files": [
+    "data\\benchmark\\test_short.mp3"
+  ],
+  "benchmarks": [
+    {
+      "model_name": "backend-qwen3",
+      "supported": true,
+      "error": null,
+      "total_audio_duration": 3.312,
+      "total_inference_time": 0.08480389999749605,
+      "avg_rtf": 0.025605042269775377,
+      "avg_memory_mb": 0.09375,
+      "avg_cer": null,
+      "results": [
+        {
+          "audio_file": "data\\benchmark\\test_short.mp3",
+          "audio_duration": 3.312,
+          "inference_time": 0.08480389999749605,
+          "rtf": 0.025605042269775377,
+          "memory_mb": 0.09375,
+          "text": "今天天气真好，适合出去散步。",
+          "cer": null,
+          "error": null
+        }
+      ]
+    }
+  ]
+}
