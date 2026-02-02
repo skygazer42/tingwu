@@ -3,10 +3,10 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
+import { Logo, LogoIcon } from '@/components/brand'
 import { useAppStore } from '@/stores'
 import { useIsMobile } from '@/hooks'
 import {
-  Mic,
   Radio,
   BookText,
   Settings,
@@ -14,10 +14,11 @@ import {
   Menu,
   ChevronLeft,
   ChevronRight,
+  FileAudio,
 } from 'lucide-react'
 
 const navItems = [
-  { path: '/', label: '转写', icon: Mic },
+  { path: '/', label: '转写', icon: FileAudio },
   { path: '/realtime', label: '实时转写', icon: Radio },
   { path: '/hotwords', label: '热词管理', icon: BookText },
   { path: '/config', label: '配置管理', icon: Settings },
@@ -64,9 +65,10 @@ function SidebarContent({ collapsed, onCollapse }: SidebarContentProps) {
         'flex h-14 items-center border-b px-4',
         collapsed ? 'justify-center' : 'gap-2'
       )}>
-        <Mic className="h-6 w-6 text-primary" />
-        {!collapsed && (
-          <span className="font-semibold text-lg">TingWu</span>
+        {collapsed ? (
+          <LogoIcon size={28} />
+        ) : (
+          <Logo size="sm" />
         )}
       </div>
 

@@ -2,3 +2,4 @@ export { useMediaQuery, useIsMobile, useIsTablet, useIsDesktop } from './useMedi
 export { useWebSocket } from './useWebSocket'
 export { useAudioRecorder } from './useAudioRecorder'
 export { useKeyboardShortcuts, SHORTCUTS } from './useKeyboardShortcuts'
+export { usePolling } from './usePolling'

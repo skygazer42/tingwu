@@ -6,14 +6,15 @@ from unittest.mock import patch, Mock, MagicMock
 def test_full_pipeline():
     """测试完整转写流程"""
     with patch('src.core.engine.model_manager') as mock_mm:
-        mock_loader = MagicMock()
-        mock_mm.loader = mock_loader
-        mock_loader.transcribe.return_value = {
+        mock_backend = MagicMock()
+        mock_backend.supports_speaker = True
+        mock_backend.transcribe.return_value = {
             "text": "买当劳很好吃",
             "sentence_info": [
                 {"text": "买当劳很好吃", "start": 0, "end": 1500, "spk": 0}
             ]
         }
+        mock_mm.backend = mock_backend
 
         from src.core.engine import TranscriptionEngine
 
@@ -35,15 +36,16 @@ def test_full_pipeline():
 def test_multi_speaker_pipeline():
     """测试多说话人流程"""
     with patch('src.core.engine.model_manager') as mock_mm:
-        mock_loader = MagicMock()
-        mock_mm.loader = mock_loader
-        mock_loader.transcribe.return_value = {
+        mock_backend = MagicMock()
+        mock_backend.supports_speaker = True
+        mock_backend.transcribe.return_value = {
             "text": "你好世界你也好",
             "sentence_info": [
                 {"text": "你好世界", "start": 0, "end": 1000, "spk": 0},
                 {"text": "你也好", "start": 1200, "end": 2000, "spk": 1},
             ]
         }
+        mock_mm.backend = mock_backend
 
         from src.core.engine import TranscriptionEngine
 

@@ -1,26 +1,22 @@
-import { useState, useEffect } from 'react'
+import { useSyncExternalStore } from 'react'
 
 type MediaQueryString = string
 
 export function useMediaQuery(query: MediaQueryString): boolean {
-  const [matches, setMatches] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false
-    return window.matchMedia(query).matches
-  })
-
-  useEffect(() => {
+  const subscribe = (onStoreChange: () => void) => {
+    if (typeof window === 'undefined') return () => {}
     const mediaQuery = window.matchMedia(query)
-    setMatches(mediaQuery.matches)
-
-    const handler = (event: MediaQueryListEvent) => {
-      setMatches(event.matches)
-    }
-
+    const handler = () => onStoreChange()
     mediaQuery.addEventListener('change', handler)
     return () => mediaQuery.removeEventListener('change', handler)
-  }, [query])
+  }
 
-  return matches
+  const getSnapshot = () => {
+    if (typeof window === 'undefined') return false
+    return window.matchMedia(query).matches
+  }
+
+  return useSyncExternalStore(subscribe, getSnapshot, () => false)
 }
 
 // 常用断点

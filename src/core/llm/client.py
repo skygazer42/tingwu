@@ -1,6 +1,4 @@
 """LLM 客户端 - 支持 Ollama、OpenAI、vLLM 兼容接口
-
-提供统一的 LLM 调用接口，支持流式输出和响应缓存。
 """
 import httpx
 import hashlib
@@ -10,6 +8,8 @@ from dataclasses import dataclass
 from collections import OrderedDict
 import json
 import logging
+
+from .cancel_token import CancelToken
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +83,7 @@ class LLMClient:
         self,
         base_url: str = "http://localhost:11434",
         model: str = "qwen2.5:7b",
+        api_key: str = "",
         backend: str = "auto",
         temperature: float = 0.7,
         max_tokens: int = 4096,
@@ -97,6 +98,7 @@ class LLMClient:
         Args:
             base_url: API 基础 URL
             model: 模型名称
+            api_key: API Key (OpenAI 兼容接口需要，Ollama 留空)
             backend: 后端类型 (auto, ollama, openai, vllm)
             temperature: 温度参数 (0-2)
             max_tokens: 最大生成 token 数
@@ -107,6 +109,7 @@ class LLMClient:
         """
         self.base_url = base_url.rstrip('/')
         self.model = model
+        self.api_key = api_key
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.timeout = timeout
@@ -138,6 +141,7 @@ class LLMClient:
         messages: List[LLMMessage],
         stream: bool = False,
         use_cache: bool = True,
+        cancel_token: Optional[CancelToken] = None,
     ) -> AsyncGenerator[str, None]:
         """
         发送聊天请求
@@ -146,10 +150,15 @@ class LLMClient:
             messages: 消息列表
             stream: 是否流式输出
             use_cache: 是否使用缓存
+            cancel_token: 取消令牌，用于中断生成
 
         Yields:
             str: 生成的文本片段（如果stream=True）或完整响应（stream=False）
         """
+        # 检查取消
+        if cancel_token and cancel_token.is_cancelled:
+            return
+
         # 检查缓存
         if use_cache and self._cache and not stream:
             cached = self._cache.get(messages)
@@ -160,21 +169,34 @@ class LLMClient:
 
         # 根据后端调用
         result_parts = []
+        cancelled = False
         if self.backend == "ollama":
             async for chunk in self._chat_ollama(messages, stream):
+                if cancel_token and cancel_token.is_cancelled:
+                    logger.debug("LLM generation cancelled")
+                    cancelled = True
+                    break
                 result_parts.append(chunk)
                 yield chunk
         elif self.backend == "vllm":
             async for chunk in self._chat_vllm(messages, stream):
+                if cancel_token and cancel_token.is_cancelled:
+                    logger.debug("LLM generation cancelled")
+                    cancelled = True
+                    break
                 result_parts.append(chunk)
                 yield chunk
         else:
             async for chunk in self._chat_openai(messages, stream):
+                if cancel_token and cancel_token.is_cancelled:
+                    logger.debug("LLM generation cancelled")
+                    cancelled = True
+                    break
                 result_parts.append(chunk)
                 yield chunk
 
-        # 保存到缓存
-        if use_cache and self._cache and not stream and result_parts:
+        # 保存到缓存 (取消的结果不缓存)
+        if use_cache and self._cache and not stream and result_parts and not cancelled:
             self._cache.set(messages, "".join(result_parts))
 
     async def _chat_ollama(
@@ -224,6 +246,11 @@ class LLMClient:
         """OpenAI 兼容 API 调用"""
         url = f"{self.base_url}/v1/chat/completions"
 
+        # 构建请求头
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
         payload = {
             "model": self.model,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
@@ -233,7 +260,7 @@ class LLMClient:
         }
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            async with client.stream("POST", url, json=payload) as response:
+            async with client.stream("POST", url, json=payload, headers=headers) as response:
                 response.raise_for_status()
 
                 if stream:
@@ -270,6 +297,11 @@ class LLMClient:
         """
         url = f"{self.base_url}/v1/chat/completions"
 
+        # 构建请求头
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
         payload = {
             "model": self.model,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
@@ -283,7 +315,7 @@ class LLMClient:
         }
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            async with client.stream("POST", url, json=payload) as response:
+            async with client.stream("POST", url, json=payload, headers=headers) as response:
                 response.raise_for_status()
 
                 if stream:

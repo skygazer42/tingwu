@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils'
-import { SpeakerBadge, getSpeakerColor } from './SpeakerBadge'
+import { SpeakerBadge } from './SpeakerBadge'
+import { getSpeakerColor } from './speakerColors'
 import { DiffHighlight } from './DiffHighlight'
 import type { SentenceInfo } from '@/lib/api/types'
 

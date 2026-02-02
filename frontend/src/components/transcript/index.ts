@@ -1,5 +1,6 @@
 export { DiffHighlight } from './DiffHighlight'
-export { SpeakerBadge, getSpeakerColor } from './SpeakerBadge'
+export { SpeakerBadge } from './SpeakerBadge'
+export { getSpeakerColor } from './speakerColors'
 export { SentenceList } from './SentenceList'
 export { SpeakerStats } from './SpeakerStats'
 export { ExportMenu } from './ExportMenu'

@@ -1,0 +1,1 @@
+export { HotwordManager } from './HotwordManager'

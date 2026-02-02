@@ -2,11 +2,11 @@ import { useState, useCallback, useEffect } from 'react'
 import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Mic, MicOff, Copy, Check, Trash2, Wifi, WifiOff } from 'lucide-react'
+import { Mic, MicOff, Copy, Check, Trash2 } from 'lucide-react'
 import { AudioWaveform, VolumeLevel, RecordingTimer } from '@/components/audio'
 import { StreamingText, ModeSelector } from '@/components/realtime'
+import { ConnectionStatus as ConnectionStatusComponent } from '@/components/realtime/ConnectionStatus'
 import { useWebSocket, useAudioRecorder } from '@/hooks'
 import type { WSMessage, WSResultMessage } from '@/lib/api/types'
 
@@ -161,26 +161,9 @@ export default function RealtimePage() {
           <h1 className="text-2xl font-bold">实时转写</h1>
           <p className="text-muted-foreground">实时录制音频并进行语音识别</p>
         </div>
-        <Badge
-          variant="outline"
-          className={
-            isConnected
-              ? 'bg-green-500/10 text-green-600 border-green-200'
-              : 'bg-muted'
-          }
-        >
-          {isConnected ? (
-            <>
-              <Wifi className="h-3 w-3 mr-1" />
-              已连接
-            </>
-          ) : (
-            <>
-              <WifiOff className="h-3 w-3 mr-1" />
-              未连接
-            </>
-          )}
-        </Badge>
+        <ConnectionStatusComponent
+          status={isConnected ? 'connected' : isConnecting ? 'connecting' : 'disconnected'}
+        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">

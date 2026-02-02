@@ -4,14 +4,16 @@ from unittest.mock import patch, Mock, MagicMock
 @pytest.fixture
 def mock_model_manager():
     with patch('src.core.engine.model_manager') as mock_mm:
-        mock_loader = MagicMock()
-        mock_mm.loader = mock_loader
-        mock_loader.transcribe.return_value = {
+        # Engine now uses model_manager.backend.transcribe(...) as the primary path.
+        mock_backend = MagicMock()
+        mock_backend.supports_speaker = True
+        mock_backend.transcribe.return_value = {
             "text": "买当劳很好吃",
             "sentence_info": [
                 {"text": "买当劳很好吃", "start": 0, "end": 1500, "spk": 0}
             ]
         }
+        mock_mm.backend = mock_backend
         yield mock_mm
 
 def test_engine_initialization(mock_model_manager):

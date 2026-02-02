@@ -1,6 +1,4 @@
 """FunASR 模型加载器 - 向后兼容封装
-
-注意: 此模块为向后兼容保留。新代码应使用 src.models.backends 模块。
 """
 import logging
 from typing import Optional, Dict, Any

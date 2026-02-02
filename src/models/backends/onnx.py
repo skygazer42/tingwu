@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 
 # ONNX 模型 ID
 ONNX_MODEL_PARAFORMER = "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-onnx"
+ONNX_MODEL_PARAFORMER_ONLINE = "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online-onnx"
 ONNX_MODEL_VAD = "iic/speech_fsmn_vad_zh-cn-16k-common-onnx"
 ONNX_MODEL_PUNC = "iic/punc_ct-transformer_cn-en-common-vocab471067-large-onnx"
 
@@ -19,7 +20,8 @@ class ONNXBackend(ASRBackend):
     特点：
     - 使用 ONNX Runtime 进行推理，性能提升 2-10x
     - 支持 INT8 量化，进一步降低内存和延迟
-    - 仅支持离线转写，不支持流式
+    - 支持离线和流式转写
+    - 暂不支持说话人识别 (无 ONNX 版本)
 
     Requirements:
         pip install funasr-onnx onnxruntime
@@ -35,6 +37,7 @@ class ONNXBackend(ASRBackend):
         intra_threads: int = 4,
         inter_threads: int = 1,
         model_dir: Optional[str] = None,
+        model_online_dir: Optional[str] = None,
         vad_model_dir: Optional[str] = None,
         punc_model_dir: Optional[str] = None,
         **kwargs
@@ -47,7 +50,8 @@ class ONNXBackend(ASRBackend):
             quantize: 是否启用 INT8 量化
             intra_threads: ONNX 推理线程数
             inter_threads: ONNX 并行操作数
-            model_dir: ASR 模型路径（默认自动下载）
+            model_dir: 离线 ASR 模型路径（默认自动下载）
+            model_online_dir: 流式 ASR 模型路径（默认自动下载）
             vad_model_dir: VAD 模型路径（默认自动下载）
             punc_model_dir: 标点模型路径（默认自动下载）
         """
@@ -57,11 +61,14 @@ class ONNXBackend(ASRBackend):
         self.intra_threads = intra_threads
         self.inter_threads = inter_threads
         self.model_dir = model_dir or ONNX_MODEL_PARAFORMER
+        self.model_online_dir = model_online_dir or ONNX_MODEL_PARAFORMER_ONLINE
         self.vad_model_dir = vad_model_dir or ONNX_MODEL_VAD
         self.punc_model_dir = punc_model_dir or ONNX_MODEL_PUNC
 
         self._model = None
+        self._model_online = None
         self._vad_model = None
+        self._vad_model_online = None
         self._punc_model = None
         self._loaded = False
 
@@ -88,14 +95,27 @@ class ONNXBackend(ASRBackend):
         except Exception as e:
             logger.warning(f"Failed to configure ONNX Runtime options: {e}")
 
+        # 加载离线 ASR 模型
         logger.info(f"Loading ONNX ASR model: {self.model_dir}")
         logger.info(f"Quantization: {self.quantize}, Device: {self.device}")
-
-        # 加载 ASR 模型
         self._model = Paraformer(
             model_dir=self.model_dir,
             quantize=self.quantize,
         )
+
+        # 加载流式 ASR 模型
+        try:
+            from funasr_onnx import Paraformer as ParaformerOnline
+            logger.info(f"Loading ONNX streaming ASR model: {self.model_online_dir}")
+            self._model_online = ParaformerOnline(
+                model_dir=self.model_online_dir,
+                quantize=self.quantize,
+            )
+            logger.info("ONNX streaming ASR model loaded successfully")
+        except Exception as e:
+            logger.warning(f"Failed to load streaming ASR model: {e}")
+            logger.warning("流式转写将不可用，WebSocket 将回退到 PyTorch 后端")
+            self._model_online = None
 
         # 加载 VAD 模型
         logger.info(f"Loading ONNX VAD model: {self.vad_model_dir}")
@@ -103,6 +123,18 @@ class ONNXBackend(ASRBackend):
             model_dir=self.vad_model_dir,
             quantize=self.quantize,
         )
+
+        # 加载流式 VAD 模型
+        try:
+            from funasr_onnx import Fsmn_vad_online
+            self._vad_model_online = Fsmn_vad_online(
+                model_dir=self.vad_model_dir,
+                quantize=self.quantize,
+            )
+            logger.info("ONNX online VAD model loaded successfully")
+        except Exception as e:
+            logger.warning(f"Failed to load online VAD model: {e}")
+            self._vad_model_online = None
 
         # 加载标点模型
         logger.info(f"Loading ONNX Punctuation model: {self.punc_model_dir}")
@@ -149,8 +181,8 @@ class ONNXBackend(ASRBackend):
 
     @property
     def supports_streaming(self) -> bool:
-        """ONNX 后端不支持流式"""
-        return False
+        """ONNX 后端支持流式（需要加载流式模型）"""
+        return self._model_online is not None
 
     @property
     def supports_speaker(self) -> bool:
@@ -226,10 +258,137 @@ class ONNXBackend(ASRBackend):
             logger.error(f"ONNX transcription failed: {e}")
             raise
 
+    def transcribe_streaming(
+        self,
+        audio_chunk: bytes,
+        cache: Dict[str, Any],
+        is_final: bool = False,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """流式转写（单个音频块）
+
+        使用 Paraformer-online 和 Fsmn_vad_online 进行流式 ASR。
+
+        Args:
+            audio_chunk: 音频数据块 (16kHz, 16bit, mono PCM)
+            cache: 状态缓存字典，用于维持流式状态
+            is_final: 是否为最后一个块
+            **kwargs: 其他参数
+
+        Returns:
+            转写结果字典，包含 text 和 is_final
+        """
+        self._ensure_loaded()
+
+        if self._model_online is None:
+            raise RuntimeError("流式 ASR 模型未加载，无法进行流式转写")
+
+        import numpy as np
+
+        try:
+            # 将 bytes 转为 numpy array (16kHz, 16bit, mono)
+            if isinstance(audio_chunk, bytes):
+                audio_data = np.frombuffer(audio_chunk, dtype=np.int16).astype(np.float32) / 32768.0
+            elif isinstance(audio_chunk, np.ndarray):
+                audio_data = audio_chunk.astype(np.float32) if audio_chunk.dtype != np.float32 else audio_chunk
+            else:
+                raise ValueError(f"不支持的音频输入类型: {type(audio_chunk)}")
+
+            if len(audio_data) == 0:
+                return {"text": "", "is_final": is_final}
+
+            # 初始化流式缓存
+            if "online_cache" not in cache:
+                cache["online_cache"] = {}
+            if "vad_cache" not in cache:
+                cache["vad_cache"] = {}
+            if "accumulated_text" not in cache:
+                cache["accumulated_text"] = ""
+
+            # 流式 VAD 检测
+            text_parts = []
+            if self._vad_model_online is not None:
+                vad_result = self._vad_model_online(
+                    audio_data,
+                    cache=cache["vad_cache"],
+                    is_final=is_final,
+                )
+                # VAD 返回语音段的起止位置
+                if vad_result and len(vad_result) > 0:
+                    segments = vad_result[0] if isinstance(vad_result, list) else vad_result
+                    if isinstance(segments, dict) and "value" in segments:
+                        segments = segments["value"]
+                    if segments:
+                        # 对每个语音段进行在线 ASR
+                        for seg in segments if isinstance(segments, list) else [segments]:
+                            asr_result = self._model_online(
+                                audio_data,
+                                cache=cache["online_cache"],
+                                is_final=is_final,
+                            )
+                            if asr_result:
+                                text_parts.append(self._extract_text(asr_result))
+                else:
+                    # VAD 未检测到语音段，仍然送入 ASR（可能在积累中）
+                    asr_result = self._model_online(
+                        audio_data,
+                        cache=cache["online_cache"],
+                        is_final=is_final,
+                    )
+                    if asr_result:
+                        text_parts.append(self._extract_text(asr_result))
+            else:
+                # 无流式 VAD，直接送入 ASR
+                asr_result = self._model_online(
+                    audio_data,
+                    cache=cache["online_cache"],
+                    is_final=is_final,
+                )
+                if asr_result:
+                    text_parts.append(self._extract_text(asr_result))
+
+            chunk_text = "".join(text_parts)
+
+            # 如果是最后一个块，添加标点
+            if is_final and chunk_text:
+                try:
+                    punc_result = self._punc_model(chunk_text)
+                    if isinstance(punc_result, tuple) and len(punc_result) >= 1:
+                        chunk_text = punc_result[0]
+                    elif isinstance(punc_result, list) and len(punc_result) > 0:
+                        chunk_text = punc_result[0] if isinstance(punc_result[0], str) else chunk_text
+                except Exception as e:
+                    logger.warning(f"Streaming punctuation failed: {e}")
+
+            return {
+                "text": chunk_text,
+                "is_final": is_final,
+            }
+
+        except Exception as e:
+            logger.error(f"ONNX streaming transcription failed: {e}")
+            raise
+
+    def _extract_text(self, asr_result) -> str:
+        """从 ASR 结果中提取文本"""
+        if not asr_result or len(asr_result) == 0:
+            return ""
+
+        item = asr_result[0] if isinstance(asr_result, list) else asr_result
+        if isinstance(item, dict) and "preds" in item:
+            return item["preds"][0] if isinstance(item["preds"], tuple) else str(item["preds"])
+        elif isinstance(item, dict) and "text" in item:
+            return item["text"]
+        elif isinstance(item, str):
+            return item
+        return str(item) if item else ""
+
     def unload(self) -> None:
         """释放模型资源"""
         self._model = None
+        self._model_online = None
         self._vad_model = None
+        self._vad_model_online = None
         self._punc_model = None
         self._loaded = False
         logger.info("ONNX backend models unloaded")
@@ -242,9 +401,10 @@ class ONNXBackend(ASRBackend):
             "device": self.device,
             "quantize": self.quantize,
             "model_dir": self.model_dir,
+            "model_online_dir": self.model_online_dir,
             "vad_model_dir": self.vad_model_dir,
             "punc_model_dir": self.punc_model_dir,
-            "supports_streaming": False,
+            "supports_streaming": self.supports_streaming,
             "supports_hotwords": True,  # 通过后处理支持
             "supports_speaker": False,
         }

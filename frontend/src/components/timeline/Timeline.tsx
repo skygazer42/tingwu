@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
 import { cn } from '@/lib/utils'
-import { getSpeakerColor } from '@/components/transcript/SpeakerBadge'
+import { getSpeakerColor } from '@/components/transcript/speakerColors'
 import type { SentenceInfo } from '@/lib/api/types'
 
 interface TimelineProps {

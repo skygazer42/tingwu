@@ -12,6 +12,7 @@ import { Slider } from '@/components/ui/slider'
 import { Loader2, RefreshCw, Save } from 'lucide-react'
 import { getAllConfig, updateConfig, reloadEngine } from '@/lib/api'
 import { useConfigStore } from '@/stores'
+import { ConfigPresets } from '@/components/config/ConfigPresets'
 
 // 配置项定义
 interface ConfigItemDef {
@@ -30,8 +31,8 @@ const CORRECTION_CONFIGS: ConfigItemDef[] = [
   {
     key: 'text_correct_backend', label: '纠错后端', description: '选择纠错引擎', type: 'select',
     options: [
-      { value: 'pycorrector', label: 'PyCorrector' },
-      { value: 'ernie', label: 'ERNIE' },
+      { value: 'kenlm', label: 'KenLM (轻量/快速)' },
+      { value: 'macbert', label: 'MacBERT (效果更强)' },
     ]
   },
   { key: 'confidence_threshold', label: '置信度阈值', description: '低于此阈值的结果触发纠错', type: 'slider', min: 0, max: 1, step: 0.05 },
@@ -69,7 +70,8 @@ const POSTPROCESS_CONFIGS: ConfigItemDef[] = [
   {
     key: 'zh_convert_locale', label: '转换目标', description: '选择转换的目标字体', type: 'select',
     options: [
-      { value: 'zh-cn', label: '简体中文' },
+      { value: 'zh-hans', label: '简体中文 (zh-hans)' },
+      { value: 'zh-hant', label: '繁体中文 (zh-hant)' },
       { value: 'zh-tw', label: '繁体中文 (台湾)' },
       { value: 'zh-hk', label: '繁体中文 (香港)' },
     ]
@@ -271,6 +273,17 @@ export default function ConfigPage() {
           </Button>
         </div>
       </div>
+
+      {/* 配置预设 */}
+      <ConfigPresets
+        currentConfig={serverConfig}
+        onApplyPreset={(preset) => {
+          Object.entries(preset.config).forEach(([key, value]) => {
+            setPendingChange(key, value)
+          })
+          toast.info(`已应用预设: ${preset.name}，请保存以生效`)
+        }}
+      />
 
       <Tabs defaultValue="correction" className="space-y-4">
         <TabsList>

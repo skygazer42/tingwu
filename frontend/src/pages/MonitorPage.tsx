@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Loader2, RefreshCw, Activity, Clock, CheckCircle, Zap, Database } from 'lucide-react'
 import { checkHealth, getMetrics } from '@/lib/api'
 import { ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
+import { PrometheusPanel } from '@/components/monitor/PrometheusPanel'
 
 export default function MonitorPage() {
   // 健康检查
@@ -279,6 +280,8 @@ export default function MonitorPage() {
           </div>
         </CardContent>
       </Card>
+      {/* Prometheus 集成 */}
+      <PrometheusPanel />
     </div>
   )
 }

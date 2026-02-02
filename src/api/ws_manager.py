@@ -6,6 +6,7 @@ from fastapi import WebSocket
 
 from src.config import settings
 from src.core.text_processor.stream_merger import StreamTextMerger
+from src.core.llm.cancel_token import CancelToken
 from src.utils.service_metrics import metrics
 
 logger = logging.getLogger(__name__)
@@ -30,12 +31,17 @@ class ConnectionState:
     latency_samples: list = field(default_factory=list)
     adaptive_chunk_enable: bool = True
 
+    # LLM 取消令牌
+    cancel_token: CancelToken = field(default_factory=CancelToken)
+
     def reset(self):
         """重置状态"""
         self.is_speaking = False
         self.asr_cache = {}
         self.vad_cache = {}
         self.text_merger.reset()
+        # 重置取消令牌
+        self.cancel_token.reset()
 
     def update_latency(self, latency_ms: float):
         """更新延迟样本并自适应调整分块大小

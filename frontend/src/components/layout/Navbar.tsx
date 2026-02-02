@@ -5,10 +5,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Logo } from '@/components/brand'
 import { useTheme } from '@/providers'
 import { useAppStore } from '@/stores'
 import { useIsMobile } from '@/hooks'
-import { Moon, Sun, Monitor, Menu, Mic } from 'lucide-react'
+import { Moon, Sun, Monitor, Menu } from 'lucide-react'
 
 export function Navbar() {
   const { theme, setTheme, resolvedTheme } = useTheme()
@@ -30,10 +31,7 @@ export function Navbar() {
 
       {/* 移动端 Logo */}
       {isMobile && (
-        <div className="flex items-center gap-2">
-          <Mic className="h-5 w-5 text-primary" />
-          <span className="font-semibold">TingWu</span>
-        </div>
+        <Logo size="sm" />
       )}
 
       {/* 占位符 */}

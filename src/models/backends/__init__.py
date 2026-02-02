@@ -4,6 +4,7 @@
 - PyTorchBackend: 基于 FunASR AutoModel 的 PyTorch 后端（默认）
 - ONNXBackend: 基于 funasr-onnx 的 ONNX Runtime 后端
 - SenseVoiceBackend: 基于 SenseVoice 的高速后端
+- GGUFBackend: 基于 llama.cpp 的 GGUF 量化后端
 """
 from typing import Literal, Optional
 import logging
@@ -12,7 +13,7 @@ from .base import ASRBackend
 
 logger = logging.getLogger(__name__)
 
-BackendType = Literal["pytorch", "onnx", "sensevoice"]
+BackendType = Literal["pytorch", "onnx", "sensevoice", "gguf"]
 
 
 def get_backend(
@@ -25,7 +26,7 @@ def get_backend(
     """获取 ASR 后端实例
 
     Args:
-        backend_type: 后端类型 ("pytorch", "onnx", "sensevoice")
+        backend_type: 后端类型 ("pytorch", "onnx", "sensevoice", "gguf")
         device: 设备类型 ("cuda" 或 "cpu")
         ngpu: GPU 数量
         ncpu: CPU 核心数
@@ -68,6 +69,15 @@ def get_backend(
             ncpu=ncpu,
             **kwargs
         )
+
+    elif backend_type == "gguf":
+        try:
+            from .gguf import GGUFBackend
+        except ImportError as e:
+            raise ImportError(
+                "GGUF 后端需要安装 onnxruntime 和 gguf: pip install onnxruntime gguf"
+            ) from e
+        return GGUFBackend(**kwargs)
 
     else:
         raise ValueError(f"不支持的后端类型: {backend_type}")

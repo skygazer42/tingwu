@@ -6,12 +6,17 @@ import io
 @pytest.fixture
 def client():
     with patch('src.core.engine.model_manager') as mock_mm:
-        mock_loader = MagicMock()
-        mock_mm.loader = mock_loader
-        mock_loader.transcribe.return_value = {
+        # App lifespan triggers `transcription_engine.warmup()`, which uses
+        # `model_manager.backend`. Mock backend to avoid loading real models.
+        mock_backend = MagicMock()
+        mock_backend.get_info.return_value = {"name": "MockBackend", "type": "mock"}
+        mock_backend.warmup.return_value = None
+        mock_backend.supports_speaker = True
+        mock_backend.transcribe.return_value = {
             "text": "你好世界",
             "sentence_info": [{"text": "你好世界", "start": 0, "end": 1000}]
         }
+        mock_mm.backend = mock_backend
 
         from src.main import app
         with TestClient(app) as c:
@@ -32,14 +37,15 @@ def test_root_endpoint(client):
 
 def test_transcribe_endpoint(client):
     """测试转写接口"""
-    with patch('src.core.engine.transcription_engine') as mock_engine, \
+    # Route uses `await transcription_engine.transcribe_async(...)`, so patch that
+    # symbol where it is imported/used (src.api.routes.transcribe).
+    with patch('src.api.routes.transcribe.transcription_engine.transcribe_async', new_callable=AsyncMock) as mock_transcribe_async, \
          patch('src.api.routes.transcribe.process_audio_file') as mock_process:
-        mock_engine.transcribe.return_value = {
+        mock_transcribe_async.return_value = {
             "text": "你好世界",
             "sentences": [{"text": "你好世界", "start": 0, "end": 1000}],
             "raw_text": "你好世界"
         }
-        mock_engine._hotwords_loaded = False
 
         async def fake_process(file):
             yield b"\x00" * 32000
@@ -57,15 +63,14 @@ def test_transcribe_endpoint(client):
 
 def test_transcribe_with_speaker(client):
     """测试带说话人的转写"""
-    with patch('src.core.engine.transcription_engine') as mock_engine, \
+    with patch('src.api.routes.transcribe.transcription_engine.transcribe_async', new_callable=AsyncMock) as mock_transcribe_async, \
          patch('src.api.routes.transcribe.process_audio_file') as mock_process:
-        mock_engine.transcribe.return_value = {
+        mock_transcribe_async.return_value = {
             "text": "你好",
             "sentences": [{"text": "你好", "start": 0, "end": 500, "speaker": "说话人甲", "speaker_id": 0}],
             "transcript": "[00:00 - 00:00] 说话人甲: 你好",
             "raw_text": "你好"
         }
-        mock_engine._hotwords_loaded = False
 
         async def fake_process(file):
             yield b"\x00" * 16000

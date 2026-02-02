@@ -1,68 +1,48 @@
-import pytest
-from unittest.mock import patch, Mock, MagicMock
+from unittest.mock import MagicMock, patch
+
 
 def test_model_loader_initialization():
-    """测试模型加载器可以正确初始化"""
-    from src.models.asr_loader import ASRModelLoader
-    loader = ASRModelLoader(device="cpu", ngpu=0)
-    assert loader is not None
-    assert loader.device == "cpu"
-    assert loader.ngpu == 0
+    """ASRModelLoader is a thin compatibility wrapper around PyTorchBackend."""
+    with patch("src.models.asr_loader.PyTorchBackend") as mock_backend_cls:
+        mock_backend = MagicMock()
+        mock_backend_cls.return_value = mock_backend
 
-def test_model_loader_lazy_load():
-    """测试模型懒加载机制 - 初始化时不加载模型"""
-    from src.models.asr_loader import ASRModelLoader
-    loader = ASRModelLoader(device="cpu", ngpu=0)
-    assert loader._asr_model is None
-    assert loader._asr_model_online is None
-    assert loader._asr_model_with_spk is None
+        from src.models.asr_loader import ASRModelLoader
 
-def test_model_loader_config():
-    """测试模型名称配置正确"""
-    from src.models.asr_loader import ASRModelLoader
-    loader = ASRModelLoader(
-        device="cpu", ngpu=0,
-        asr_model="test-model",
-        vad_model="test-vad"
-    )
-    assert loader._asr_model_name == "test-model"
-    assert loader._vad_model_name == "test-vad"
+        loader = ASRModelLoader(device="cpu", ngpu=0)
+        assert loader is not None
 
-@patch('src.models.asr_loader.AutoModel')
-def test_transcribe_calls_generate(mock_auto_model):
-    """测试 transcribe 调用模型 generate"""
-    from src.models.asr_loader import ASRModelLoader
+        # Verify key args are forwarded to backend ctor.
+        called_kwargs = mock_backend_cls.call_args.kwargs
+        assert called_kwargs["device"] == "cpu"
+        assert called_kwargs["ngpu"] == 0
 
-    mock_instance = MagicMock()
-    mock_instance.generate.return_value = [{"text": "你好", "sentence_info": []}]
-    mock_auto_model.return_value = mock_instance
 
-    loader = ASRModelLoader(device="cpu", ngpu=0)
-    result = loader.transcribe(b"fake_audio")
+def test_transcribe_forwards_to_backend():
+    """ASRModelLoader.transcribe should forward to backend.transcribe."""
+    with patch("src.models.asr_loader.PyTorchBackend") as mock_backend_cls:
+        mock_backend = MagicMock()
+        mock_backend.transcribe.return_value = {"text": "你好", "sentence_info": []}
+        mock_backend_cls.return_value = mock_backend
 
-    assert result["text"] == "你好"
-    mock_instance.generate.assert_called_once()
+        from src.models.asr_loader import ASRModelLoader
 
-@patch('src.models.asr_loader.AutoModel')
-def test_transcribe_with_speaker(mock_auto_model):
-    """测试带说话人的 transcribe"""
-    from src.models.asr_loader import ASRModelLoader
+        loader = ASRModelLoader(device="cpu", ngpu=0)
+        result = loader.transcribe(b"fake_audio", hotwords="Claude", with_speaker=True)
 
-    mock_instance = MagicMock()
-    mock_instance.generate.return_value = [{
-        "text": "你好世界",
-        "sentence_info": [{"text": "你好", "spk": 0}]
-    }]
-    mock_auto_model.return_value = mock_instance
+        assert result["text"] == "你好"
+        mock_backend.transcribe.assert_called_once_with(
+            b"fake_audio",
+            hotwords="Claude",
+            with_speaker=True,
+        )
 
-    loader = ASRModelLoader(device="cpu", ngpu=0)
-    result = loader.transcribe(b"fake_audio", with_speaker=True)
-
-    assert result["text"] == "你好世界"
 
 def test_model_manager_singleton():
     """测试 ModelManager 单例模式"""
     from src.models.model_manager import ModelManager
+
     m1 = ModelManager()
     m2 = ModelManager()
     assert m1 is m2
+

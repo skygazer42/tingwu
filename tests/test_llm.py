@@ -14,12 +14,12 @@ class TestLLMMessage:
 class TestLLMClient:
     def test_initialization_ollama(self):
         client = LLMClient(base_url="http://localhost:11434", model="qwen2.5:7b")
-        assert client.is_ollama is True
+        assert client.backend == "ollama"
         assert client.model == "qwen2.5:7b"
 
     def test_initialization_openai(self):
         client = LLMClient(base_url="https://api.openai.com", model="gpt-4")
-        assert client.is_ollama is False
+        assert client.backend == "openai"
         assert client.model == "gpt-4"
 
     def test_default_params(self):

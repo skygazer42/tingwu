@@ -50,7 +50,7 @@ function computeDiff(original: string, corrected: string): DiffSegment[] {
   while (i < original.length || j < corrected.length) {
     if (k < lcs.length && i < original.length && original[i] === lcs[k]) {
       // 查找连续的公共部分
-      let start = i
+      const start = i
       while (k < lcs.length && i < original.length && j < corrected.length &&
              original[i] === lcs[k] && corrected[j] === lcs[k]) {
         i++
@@ -62,7 +62,7 @@ function computeDiff(original: string, corrected: string): DiffSegment[] {
       }
     } else {
       // 删除的部分
-      let removedStart = i
+      const removedStart = i
       while (i < original.length && (k >= lcs.length || original[i] !== lcs[k])) {
         i++
       }
@@ -71,7 +71,7 @@ function computeDiff(original: string, corrected: string): DiffSegment[] {
       }
 
       // 添加的部分
-      let addedStart = j
+      const addedStart = j
       while (j < corrected.length && (k >= lcs.length || corrected[j] !== lcs[k])) {
         j++
       }

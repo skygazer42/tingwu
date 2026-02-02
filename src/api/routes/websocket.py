@@ -181,6 +181,12 @@ async def websocket_realtime(websocket: WebSocket):
 
 def _handle_config(state: ConnectionState, config: dict):
     """处理配置消息"""
+    # 处理 LLM 取消请求
+    if config.get("type") == "cancel_llm":
+        state.cancel_token.cancel()
+        logger.debug("LLM generation cancelled via WebSocket")
+        return
+
     if "is_speaking" in config:
         state.is_speaking = config["is_speaking"]
     if "mode" in config:

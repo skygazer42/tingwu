@@ -3,7 +3,7 @@
 构建包含上下文信息的提示词，用于 LLM 润色语音识别结果。
 """
 import re
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 
 # 默认系统提示词 - 移植自 CapsWriter-Offline
@@ -90,6 +90,7 @@ class PromptBuilder:
         self,
         user_content: str,
         hotwords: Optional[List[str]] = None,
+        similarity_candidates: Optional[List[Tuple[str, str, float]]] = None,
         rectify_context: Optional[str] = None,
         prev_context: Optional[str] = None,
         next_context: Optional[str] = None,
@@ -102,6 +103,7 @@ class PromptBuilder:
         Args:
             user_content: 用户输入文本（语音识别结果）
             hotwords: 热词列表
+            similarity_candidates: 相似词候选 [(原词, 热词, 分数), ...]，由热词检索动态生成
             rectify_context: 纠错历史上下文（由 RectificationRAG.format_prompt 生成）
             prev_context: 前文上下文（前一句或多句）
             next_context: 后文上下文（后一句或多句）
@@ -124,6 +126,13 @@ class PromptBuilder:
         # 热词上下文
         if hotwords:
             parts.append(f"热词列表：{', '.join(hotwords)}")
+
+        # 相似词候选上下文（RAG 动态检索结果）
+        if similarity_candidates:
+            lines = ["相似词候选（请根据上下文判断是否需要纠正）："]
+            for original, hotword, score in similarity_candidates:
+                lines.append(f"- \"{original}\" → \"{hotword}\"")
+            parts.append("\n".join(lines))
 
         # 纠错历史上下文
         if rectify_context:

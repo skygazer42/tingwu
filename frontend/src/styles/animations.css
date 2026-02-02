@@ -1,0 +1,333 @@
+/* ===================================
+   TingWu Animation System
+   Plan 28: 动画系统标准化
+   =================================== */
+
+/* 动画时长令牌 */
+:root {
+  --duration-instant: 50ms;
+  --duration-fast: 150ms;
+  --duration-normal: 300ms;
+  --duration-slow: 500ms;
+  --duration-slower: 700ms;
+
+  /* 缓动函数 */
+  --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  --ease-elastic: cubic-bezier(0.68, -0.6, 0.32, 1.6);
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* ===== 进入动画 ===== */
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-left {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-right {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes scale-up {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes blur-in {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+/* ===== 退出动画 ===== */
+
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes scale-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+/* ===== 循环动画 ===== */
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(-5%);
+    animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+  }
+  50% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
+}
+
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  10%, 30%, 50%, 70%, 90% {
+    transform: translateX(-2px);
+  }
+  20%, 40%, 60%, 80% {
+    transform: translateX(2px);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes ping {
+  75%, 100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+/* ===== 特殊动画 ===== */
+
+@keyframes wave {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes expand {
+  from {
+    height: 0;
+    opacity: 0;
+  }
+  to {
+    height: var(--radix-collapsible-content-height);
+    opacity: 1;
+  }
+}
+
+@keyframes collapse {
+  from {
+    height: var(--radix-collapsible-content-height);
+    opacity: 1;
+  }
+  to {
+    height: 0;
+    opacity: 0;
+  }
+}
+
+/* ===== 动画类 ===== */
+
+.animate-fade-in {
+  animation: fade-in var(--duration-normal) var(--ease-out);
+}
+
+.animate-fade-out {
+  animation: fade-out var(--duration-fast) var(--ease-in);
+}
+
+.animate-slide-up {
+  animation: slide-up var(--duration-normal) var(--ease-out);
+}
+
+.animate-slide-down {
+  animation: slide-down var(--duration-normal) var(--ease-out);
+}
+
+.animate-slide-left {
+  animation: slide-left var(--duration-normal) var(--ease-out);
+}
+
+.animate-slide-right {
+  animation: slide-right var(--duration-normal) var(--ease-out);
+}
+
+.animate-scale-in {
+  animation: scale-in var(--duration-normal) var(--ease-out);
+}
+
+.animate-scale-up {
+  animation: scale-up var(--duration-normal) var(--ease-bounce);
+}
+
+.animate-scale-out {
+  animation: scale-out var(--duration-fast) var(--ease-in);
+}
+
+.animate-blur-in {
+  animation: blur-in var(--duration-slow) var(--ease-out);
+}
+
+.animate-pulse {
+  animation: pulse 2s var(--ease-in-out) infinite;
+}
+
+.animate-bounce {
+  animation: bounce 1s infinite;
+}
+
+.animate-shake {
+  animation: shake 0.5s var(--ease-default);
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+.animate-ping {
+  animation: ping 1s var(--ease-in-out) infinite;
+}
+
+.animate-expand {
+  animation: expand var(--duration-normal) var(--ease-out);
+}
+
+.animate-collapse {
+  animation: collapse var(--duration-fast) var(--ease-in);
+}
+
+/* ===== 微交互类 ===== */
+
+.hover-lift {
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+}
+
+.hover-glow {
+  transition: box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.hover-glow:hover {
+  box-shadow: 0 0 20px oklch(var(--primary) / 0.4);
+}
+
+.press-scale {
+  transition: transform var(--duration-instant) var(--ease-out);
+}
+
+.press-scale:active {
+  transform: scale(0.98);
+}
+
+.focus-ring {
+  transition: box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.focus-ring:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px oklch(var(--background)), 0 0 0 4px oklch(var(--ring));
+}
+
+/* ===== 减少动画偏好支持 ===== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

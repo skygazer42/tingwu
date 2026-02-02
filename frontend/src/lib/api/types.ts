@@ -32,6 +32,44 @@ export interface BatchTranscribeResponse {
   results: BatchTranscribeItem[]
 }
 
+// URL 转写相关
+export interface UrlTranscribeRequest {
+  url: string
+  with_speaker?: boolean
+  apply_hotword?: boolean
+  apply_llm?: boolean
+  llm_role?: string
+  hotwords?: string
+}
+
+export interface UrlTranscribeResponse {
+  code: number
+  task_id: string
+  message: string
+}
+
+// 异步任务相关
+export interface TaskResultRequest {
+  task_id: string
+  wait?: boolean
+  timeout?: number
+}
+
+export interface TaskResultResponse {
+  code: number
+  task_id: string
+  status: 'pending' | 'processing' | 'success' | 'error'
+  result?: TranscribeResponse
+  error?: string
+  progress?: number
+}
+
+// 视频转写相关
+export interface VideoTranscribeResponse extends TranscribeResponse {
+  video_duration?: number
+  audio_extracted?: boolean
+}
+
 export interface HealthResponse {
   status: string
   version: string

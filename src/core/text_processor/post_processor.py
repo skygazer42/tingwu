@@ -52,6 +52,10 @@ class PostProcessorSettings:
     # 标点合并
     punc_merge_enable: bool = False
 
+    # 末尾标点移除 (用于实时转写场景)
+    trash_punc_enable: bool = False
+    trash_punc_chars: str = "，。,."
+
 
 class TextPostProcessor:
     """
@@ -112,6 +116,8 @@ class TextPostProcessor:
         self._punc_restore_model = settings.punc_restore_model
         self._punc_restore_device = settings.punc_restore_device
         self.punc_merge_enable = settings.punc_merge_enable
+        self.trash_punc_enable = settings.trash_punc_enable
+        self.trash_punc_chars = settings.trash_punc_chars
 
     @property
     def punc_restorer(self):
@@ -182,6 +188,10 @@ class TextPostProcessor:
         if self.punc_merge_enable:
             text = merge_punctuation(text)
 
+        # 9. 末尾标点移除 (最后一步)
+        if self.trash_punc_enable and text:
+            text = text.rstrip(self.trash_punc_chars)
+
         return text
 
     def process_filler_remove(self, text: str) -> str:
@@ -247,6 +257,8 @@ class TextPostProcessor:
             punc_restore_model=getattr(config, 'punc_restore_model', 'ct-punc-c'),
             punc_restore_device=getattr(config, 'device', 'cpu'),
             punc_merge_enable=getattr(config, 'punc_merge_enable', False),
+            trash_punc_enable=getattr(config, 'trash_punc_enable', False),
+            trash_punc_chars=getattr(config, 'trash_punc_chars', '，。,.'),
         )
         return cls(settings)
 

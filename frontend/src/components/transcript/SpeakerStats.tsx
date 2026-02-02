@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { SpeakerBadge, getSpeakerColor } from './SpeakerBadge'
+import { SpeakerBadge } from './SpeakerBadge'
+import { getSpeakerColor } from './speakerColors'
 import type { SentenceInfo } from '@/lib/api/types'
 
 interface SpeakerStatsProps {

@@ -31,7 +31,7 @@ export function TranscriptView({ result, filename }: TranscriptViewProps) {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const handleSelectSentence = (sentence: SentenceInfo, _index: number) => {
+  const handleSelectSentence = (sentence: SentenceInfo) => {
     setSelectedSentence(sentence)
   }
 

@@ -1,9 +1,11 @@
 """TingWu Speech Service 主入口"""
 import logging
+from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 
 from src.config import settings
 from src.api import api_router
@@ -128,3 +130,23 @@ async def get_metrics():
 async def get_metrics_prometheus():
     """获取服务指标 (Prometheus 格式)"""
     return metrics.to_prometheus()
+
+
+# 生产环境：挂载前端静态文件
+# 前端构建后放在 frontend/dist 目录
+FRONTEND_DIST = Path(__file__).parent.parent / "frontend" / "dist"
+if FRONTEND_DIST.exists():
+    # SPA fallback: 所有未匹配的路由返回 index.html
+    from fastapi.responses import FileResponse
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str):
+        """SPA 路由回退"""
+        file_path = FRONTEND_DIST / full_path
+        if file_path.exists() and file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(FRONTEND_DIST / "index.html")
+
+    # 静态资源
+    app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
+    logger.info(f"Frontend static files mounted from {FRONTEND_DIST}")

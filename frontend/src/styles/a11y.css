@@ -1,0 +1,295 @@
+/* ========================================
+   Accessibility Styles (WCAG 2.2 AA)
+   ======================================== */
+
+/* Focus ring styles for keyboard navigation */
+@layer base {
+  /* Consistent focus ring for all interactive elements */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  /* Remove outline for mouse clicks but keep for keyboard */
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  /* Skip link for keyboard users */
+  .skip-link {
+    position: absolute;
+    top: -40px;
+    left: 0;
+    padding: 8px 16px;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    text-decoration: none;
+    z-index: 10000;
+    transition: top 0.2s;
+  }
+
+  .skip-link:focus {
+    top: 0;
+  }
+}
+
+/* Screen reader only - visually hidden but accessible */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Make sr-only content focusable */
+.sr-only-focusable:focus,
+.sr-only-focusable:active {
+  position: static;
+  width: auto;
+  height: auto;
+  padding: inherit;
+  margin: inherit;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  :root {
+    --border: oklch(0.3 0 0);
+    --ring: oklch(0.1 0 0);
+  }
+
+  .dark {
+    --border: oklch(0.8 0 0);
+    --ring: oklch(0.9 0 0);
+  }
+
+  /* Increase border widths */
+  .border {
+    border-width: 2px !important;
+  }
+
+  /* Ensure text has sufficient contrast */
+  .text-muted-foreground {
+    color: var(--foreground) !important;
+    opacity: 0.85;
+  }
+}
+
+/* Reduced transparency for better readability */
+@media (prefers-reduced-transparency) {
+  .bg-background\/95,
+  .bg-background\/80,
+  .bg-background\/60 {
+    background-color: var(--background) !important;
+  }
+
+  .backdrop-blur,
+  .backdrop-blur-sm,
+  .backdrop-blur-md {
+    backdrop-filter: none !important;
+  }
+}
+
+/* Safe area insets for mobile devices */
+.safe-area-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.safe-area-left {
+  padding-left: env(safe-area-inset-left);
+}
+
+.safe-area-right {
+  padding-right: env(safe-area-inset-right);
+}
+
+.safe-area-all {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* Minimum touch target size (44x44 as per WCAG 2.2) */
+@layer components {
+  .touch-target {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .touch-target-sm {
+    min-width: 36px;
+    min-height: 36px;
+  }
+
+  .touch-target-lg {
+    min-width: 48px;
+    min-height: 48px;
+  }
+}
+
+/* Forced colors mode (Windows High Contrast) */
+@media (forced-colors: active) {
+  /* Ensure borders are visible */
+  .border,
+  .border-t,
+  .border-b,
+  .border-l,
+  .border-r {
+    border-color: CanvasText !important;
+  }
+
+  /* Ensure focus rings are visible */
+  :focus-visible {
+    outline: 2px solid Highlight !important;
+  }
+
+  /* Ensure buttons are distinguishable */
+  button,
+  [role="button"] {
+    border: 1px solid ButtonText !important;
+  }
+
+  /* Ensure disabled state is visible */
+  :disabled,
+  [aria-disabled="true"] {
+    opacity: 0.5 !important;
+    forced-color-adjust: none;
+  }
+
+  /* Links should be visible */
+  a {
+    text-decoration: underline !important;
+  }
+
+  /* Selected items */
+  [aria-selected="true"],
+  [data-state="checked"],
+  [data-state="on"] {
+    background-color: Highlight !important;
+    color: HighlightText !important;
+  }
+}
+
+/* Ensure sufficient line height for readability */
+@layer base {
+  body {
+    line-height: 1.5;
+  }
+
+  p, li, dd {
+    line-height: 1.6;
+  }
+}
+
+/* Improve readability for dyslexic users */
+.dyslexia-friendly {
+  font-family: 'OpenDyslexic', 'Comic Sans MS', sans-serif;
+  letter-spacing: 0.05em;
+  word-spacing: 0.1em;
+  line-height: 1.8;
+}
+
+/* Loading/busy states should be announced */
+[aria-busy="true"] {
+  cursor: wait;
+}
+
+/* Error states should be visually distinct */
+[aria-invalid="true"] {
+  border-color: var(--destructive) !important;
+  box-shadow: 0 0 0 1px var(--destructive);
+}
+
+/* Required fields indicator */
+[aria-required="true"]::before {
+  content: "*";
+  color: var(--destructive);
+  margin-right: 0.25em;
+}
+
+/* Expandable/collapsible state indicators */
+[aria-expanded="true"] > .expand-icon {
+  transform: rotate(180deg);
+}
+
+[aria-expanded="false"] > .expand-icon {
+  transform: rotate(0deg);
+}
+
+/* Current page in navigation */
+[aria-current="page"] {
+  font-weight: 600;
+}
+
+/* Selection highlight */
+::selection {
+  background-color: oklch(0.65 0.18 240);
+  color: white;
+}
+
+.dark ::selection {
+  background-color: oklch(0.5 0.18 240);
+  color: white;
+}
+
+/* Print styles for accessibility */
+@media print {
+  /* Show URLs for links */
+  a[href]::after {
+    content: " (" attr(href) ")";
+    font-size: 0.875em;
+    color: #666;
+  }
+
+  /* Hide navigation and interactive elements */
+  nav,
+  button:not([type="submit"]),
+  .no-print {
+    display: none !important;
+  }
+
+  /* Ensure text is readable */
+  body {
+    font-size: 12pt;
+    line-height: 1.5;
+    color: black;
+    background: white;
+  }
+}
+
+/* Live regions for announcements */
+.live-region {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Visible live region for important announcements */
+.live-region-visible {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  max-width: 20rem;
+}

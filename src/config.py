@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     outputs_dir: Path = data_dir / "outputs"
 
     # ASR 后端配置
-    asr_backend: Literal["pytorch", "onnx", "sensevoice"] = "pytorch"
+    asr_backend: Literal["pytorch", "onnx", "sensevoice", "gguf"] = "pytorch"
 
     # FunASR 模型配置 (PyTorch 后端)
     asr_model: str = "paraformer-zh"
@@ -47,6 +47,13 @@ class Settings(BaseSettings):
     sensevoice_model: str = "iic/SenseVoiceSmall"
     sensevoice_language: str = "zh"
 
+    # GGUF 后端配置 (FunASR-Nano-GGUF)
+    gguf_encoder_path: str = "models/Fun-ASR-Nano-Encoder-Adaptor.fp32.onnx"
+    gguf_ctc_path: str = "models/Fun-ASR-Nano-CTC.int8.onnx"
+    gguf_decoder_path: str = "models/Fun-ASR-Nano-Decoder.q8_0.gguf"
+    gguf_tokens_path: str = "models/tokens.txt"
+    gguf_lib_dir: str = "models/bin"  # llama.cpp 库目录
+
     # 设备配置
     device: Literal["cuda", "cpu"] = "cuda"
     ngpu: int = 1
@@ -62,10 +69,11 @@ class Settings(BaseSettings):
     hotword_use_faiss: bool = False             # 使用 FAISS 向量索引 (大规模热词加速)
     hotword_faiss_index_type: str = "IVFFlat"   # FAISS 索引类型 (IVFFlat, HNSW)
 
-    # LLM 优化配置 (可选)
+    # LLM 优化配置
     llm_enable: bool = False
     llm_model: str = "qwen2.5:7b"
     llm_base_url: str = "http://localhost:11434"
+    llm_api_key: str = ""  # API Key (OpenAI 兼容接口需要)
     llm_backend: str = "auto"  # auto, ollama, openai, vllm
     llm_role: str = "default"  # default, translator, code, corrector
     llm_context_sentences: int = 1  # 上下文句子数 (用于多句润色)
@@ -100,6 +108,10 @@ class Settings(BaseSettings):
     punc_restore_enable: bool = False          # 独立标点恢复 (FunASR ct-punc)
     punc_restore_model: str = "ct-punc-c"      # 标点恢复模型
     punc_merge_enable: bool = False            # 标点智能合并
+
+    # 末尾标点移除 (用于实时转写场景)
+    trash_punc_enable: bool = False            # 启用末尾标点移除
+    trash_punc_chars: str = "，。,."            # 要移除的标点字符
 
     # 纠错管线编排 (按顺序执行)
     # 可用步骤: hotword, rules, pycorrector, post_process

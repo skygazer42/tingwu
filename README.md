@@ -1,6 +1,12 @@
-# TingWu 语音转写服务
+# TingWu 听悟 - 语音转写服务
 
-基于 FunASR + CapsWriter-Offline 的高精度中文语音转写服务，包含完整的 Web 前端界面。
+<p align="center">
+  <img src="frontend/public/favicon.svg" width="80" height="80" alt="TingWu Logo">
+</p>
+
+<p align="center">
+  基于 FunASR + CapsWriter-Offline 的高精度中文语音转写服务，包含完整的 Web 前端界面。
+</p>
 
 ## 特性
 
@@ -25,7 +31,74 @@
 
 ## 快速开始
 
-### Docker 部署 (推荐)
+### 方式一：Docker 部署 (推荐)
+
+```bash
+# 构建镜像 (包含前端)
+docker-compose build
+
+# 启动服务
+docker-compose up -d
+```
+
+访问 **http://localhost:8000** 即可使用。
+
+> **首次启动说明**：首次运行时会自动从 ModelScope 下载 ASR 模型（约 1-2GB），请耐心等待。模型会缓存到 Docker Volume 中，后续启动无需重新下载。
+
+#### 容器选择
+
+| 场景 | 命令 | 模型大小 |
+|------|------|----------|
+| **GPU 版本** (推荐) | `docker-compose up -d` | ~1.5GB |
+| **CPU 版本** | `docker-compose -f docker-compose.cpu.yml up -d` | ~1.5GB |
+| **SenseVoice 模型** | `docker-compose -f docker-compose.sensevoice.yml up -d` | ~500MB |
+| **ONNX 后端** | `docker-compose -f docker-compose.onnx.yml up -d` | ~400MB |
+
+#### 模型缓存
+
+模型存储在 Docker Volume 中，可查看下载状态：
+
+```bash
+# 查看模型下载进度
+docker-compose logs -f | grep -i "download\|loading"
+
+# 查看缓存大小
+docker volume ls
+docker system df -v
+```
+
+#### 常用操作
+
+```bash
+# 查看日志
+docker-compose logs -f
+
+# 停止服务
+docker-compose down
+
+# 重新构建
+docker-compose build --no-cache
+```
+
+### 方式二：本地开发
+
+需要分别启动后端和前端：
+
+```bash
+# 终端 1 - 启动后端
+pip install -r requirements.txt
+python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+
+# 终端 2 - 启动前端
+cd frontend
+npm install
+npm run dev
+```
+
+- 后端 API: http://localhost:8000
+- 前端界面: http://localhost:5173
+
+### 方式三：脚本部署
 
 ```bash
 # GPU 版本
@@ -41,21 +114,6 @@
 ./scripts/start.sh stop
 ```
 
-### 本地开发
-
-```bash
-# 后端
-pip install -r requirements.txt
-python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
-
-# 前端
-cd frontend
-npm install
-npm run dev
-```
-
-访问 http://localhost:5173 打开前端界面
-
 ## 前端界面
 
 基于 React + TypeScript + Tailwind CSS + shadcn/ui 构建的现代化前端。
@@ -64,20 +122,26 @@ npm run dev
 
 | 页面 | 功能 |
 |------|------|
-| **转写** | 文件上传、转写选项、结果展示、时间轴、导出 |
-| **实时转写** | 麦克风录制、波形显示、流式识别、模式选择 |
-| **热词管理** | 热词编辑、搜索、更新、追加、重载 |
-| **配置管理** | 纠错/热词/LLM/后处理/音频配置 |
-| **系统监控** | 健康状态、请求统计、性能指标 |
+| **转写** | 文件上传/URL转写、转写选项、结果展示、时间轴、历史记录、导出 |
+| **实时转写** | 麦克风录制、波形显示、流式识别、模式选择、连接状态 |
+| **热词管理** | 热词编辑、分组管理、搜索、导入/导出、更新、追加 |
+| **配置管理** | 纠错/热词/LLM/后处理/音频配置、配置预设 |
+| **系统监控** | 健康状态、请求统计、性能指标、Prometheus 集成 |
+
+### 快捷键
+
+按 `Ctrl + /` 查看所有快捷键。支持导航、转写控制、录制控制等。
 
 ### 前端技术栈
 
-- **框架**: React 18 + TypeScript + Vite
-- **样式**: Tailwind CSS v4 + shadcn/ui
-- **状态**: Zustand + React Query
-- **路由**: React Router v6
+- **框架**: React 19 + TypeScript + Vite 7
+- **样式**: Tailwind CSS v4 + shadcn/ui + CVA
+- **状态**: Zustand + React Query v5
+- **路由**: React Router v7
 - **图表**: Recharts
 - **音频**: Web Audio API + MediaRecorder
+- **通知**: Sonner
+- **无障碍**: WCAG 2.2 AA
 
 ### 前端构建
 
@@ -176,6 +240,18 @@ curl -X POST http://localhost:8000/config/reload
 | NCPU | CPU 线程数 | 4 |
 | PORT | 服务端口 | 8000 |
 
+### ASR 后端配置
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| ASR_BACKEND | ASR 后端 (pytorch/onnx/sensevoice) | pytorch |
+| ASR_MODEL | 离线 ASR 模型 | paraformer-zh |
+| VAD_MODEL | VAD 模型 | fsmn-vad |
+| PUNC_MODEL | 标点模型 | ct-punc-c |
+| SPK_MODEL | 说话人模型 | cam++ |
+
+> 模型会自动从 [ModelScope](https://modelscope.cn) 下载并缓存。
+
 ### 热词配置
 
 | 变量 | 说明 | 默认值 |
@@ -250,10 +326,10 @@ tingwu/
 - **部署**: Docker + Docker Compose
 
 ### 前端
-- **框架**: React 18 + TypeScript
-- **构建**: Vite
+- **框架**: React 19 + TypeScript
+- **构建**: Vite 7
 - **样式**: Tailwind CSS v4 + shadcn/ui
-- **状态**: Zustand + React Query
+- **状态**: Zustand + React Query v5
 - **图表**: Recharts
 
 ## 测试

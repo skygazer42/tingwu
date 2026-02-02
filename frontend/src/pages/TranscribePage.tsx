@@ -1,13 +1,17 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Loader2, Play } from 'lucide-react'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Loader2, Play, FileAudio, Link } from 'lucide-react'
 import { FileDropzone } from '@/components/upload'
 import { TranscribeOptions } from '@/components/transcribe'
 import { TranscriptView } from '@/components/transcript'
 import { Timeline } from '@/components/timeline'
+import { HistoryList } from '@/components/history/HistoryList'
+import { UrlTranscribe } from '@/components/url/UrlTranscribe'
 import { useTranscriptionStore } from '@/stores'
+import { useHistoryStore } from '@/stores/historyStore'
 import { transcribeAudio, transcribeBatch } from '@/lib/api'
 import type { SentenceInfo } from '@/lib/api/types'
 
@@ -24,7 +28,10 @@ export default function TranscribePage() {
     setSelectedSentence,
   } = useTranscriptionStore()
 
+  const { addItem } = useHistoryStore()
+
   const [selectedIndex, setSelectedIndex] = useState<number>()
+  const [inputMode, setInputMode] = useState<string>('file')
 
   const handleTranscribe = async () => {
     if (files.length === 0) {
@@ -46,6 +53,19 @@ export default function TranscribePage() {
         const response = await transcribeAudio(files[0], transcribeOptions)
         if (response.code === 0) {
           setResult(response)
+          // 保存到历史记录
+          addItem({
+            filename: files[0].name,
+            text: response.text,
+            sentences: response.sentences,
+            rawText: response.raw_text,
+            options: {
+              withSpeaker: options.with_speaker,
+              applyHotword: options.apply_hotword,
+              applyLlm: options.apply_llm,
+              llmRole: options.llm_role,
+            },
+          })
           toast.success('转写完成')
         } else {
           toast.error('转写失败')
@@ -59,6 +79,22 @@ export default function TranscribePage() {
           if (firstSuccess?.result) {
             setResult(firstSuccess.result)
           }
+          // 保存批量结果到历史
+          response.results.forEach((r, idx) => {
+            if (r.success && r.result) {
+              addItem({
+                filename: files[idx]?.name ?? `文件${idx + 1}`,
+                text: r.result.text,
+                sentences: r.result.sentences,
+                rawText: r.result.raw_text,
+                options: {
+                  withSpeaker: options.with_speaker,
+                  applyHotword: options.apply_hotword,
+                  applyLlm: options.apply_llm,
+                },
+              })
+            }
+          })
           toast.success(`转写完成: ${response.success_count}/${response.total} 成功`)
         } else {
           toast.error('所有文件转写失败')
@@ -70,6 +106,10 @@ export default function TranscribePage() {
     } finally {
       setTranscribing(false)
     }
+  }
+
+  const handleUrlSubmit = async (url: string) => {
+    toast.info(`URL 转写已提交: ${url}`)
   }
 
   const handleSelectSentence = (sentence: SentenceInfo, index: number) => {
@@ -84,6 +124,11 @@ export default function TranscribePage() {
     setSelectedIndex(undefined)
   }
 
+  const handleViewHistoryItem = (item: { text: string; sentences: SentenceInfo[] }) => {
+    setResult({ ...item, code: 0, raw_text: item.text })
+    toast.success('已加载历史记录')
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -92,39 +137,54 @@ export default function TranscribePage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* 上传区域 */}
+        {/* 输入区域 - 文件上传 / URL 输入 */}
         <Card>
-          <CardHeader>
-            <CardTitle>上传文件</CardTitle>
-            <CardDescription>支持 WAV, MP3, M4A, FLAC, OGG, MP4 等格式</CardDescription>
+          <CardHeader className="pb-3">
+            <Tabs value={inputMode} onValueChange={setInputMode}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="file">
+                  <FileAudio className="h-4 w-4 mr-1" />
+                  文件上传
+                </TabsTrigger>
+                <TabsTrigger value="url">
+                  <Link className="h-4 w-4 mr-1" />
+                  URL转写
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
           </CardHeader>
           <CardContent className="space-y-4">
-            <FileDropzone />
-
-            <div className="flex gap-2">
-              <Button
-                className="flex-1"
-                onClick={handleTranscribe}
-                disabled={files.length === 0 || isTranscribing}
-              >
-                {isTranscribing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    转写中...
-                  </>
-                ) : (
-                  <>
-                    <Play className="h-4 w-4 mr-2" />
-                    开始转写
-                  </>
-                )}
-              </Button>
-              {files.length > 0 && !isTranscribing && (
-                <Button variant="outline" onClick={handleClear}>
-                  清空
-                </Button>
-              )}
-            </div>
+            {inputMode === 'file' ? (
+              <>
+                <FileDropzone />
+                <div className="flex gap-2">
+                  <Button
+                    className="flex-1"
+                    onClick={handleTranscribe}
+                    disabled={files.length === 0 || isTranscribing}
+                  >
+                    {isTranscribing ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        转写中...
+                      </>
+                    ) : (
+                      <>
+                        <Play className="h-4 w-4 mr-2" />
+                        开始转写
+                      </>
+                    )}
+                  </Button>
+                  {files.length > 0 && !isTranscribing && (
+                    <Button variant="outline" onClick={handleClear}>
+                      清空
+                    </Button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <UrlTranscribe onSubmit={handleUrlSubmit} />
+            )}
           </CardContent>
         </Card>
 
@@ -166,6 +226,9 @@ export default function TranscribePage() {
           </CardContent>
         </Card>
       )}
+
+      {/* 转写历史 */}
+      <HistoryList onViewResult={handleViewHistoryItem} />
     </div>
   )
 }

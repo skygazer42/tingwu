@@ -2,7 +2,7 @@
 import asyncio
 import logging
 import time
-from typing import Dict, Any, Optional, Union, List, Callable
+from typing import Dict, Any, Optional, Union, List, Tuple, Callable
 from pathlib import Path
 
 import numpy as np
@@ -119,7 +119,13 @@ class TranscriptionEngine:
         if self._llm_client is None:
             self._llm_client = LLMClient(
                 base_url=settings.llm_base_url,
-                model=settings.llm_model
+                model=settings.llm_model,
+                api_key=settings.llm_api_key,
+                backend=settings.llm_backend,
+                max_tokens=settings.llm_max_tokens,
+                cache_enable=settings.llm_cache_enable,
+                cache_size=settings.llm_cache_size,
+                cache_ttl=settings.llm_cache_ttl,
             )
         return self._llm_client
 
@@ -227,13 +233,17 @@ class TranscriptionEngine:
         hotwords_to_inject = self._hotwords_list[:max_count]
         return "\n".join(hotwords_to_inject)
 
-    def _apply_corrections(self, text: str) -> str:
+    def _apply_corrections(self, text: str) -> Tuple[str, List[Tuple[str, str, float]]]:
         """应用纠错管线
 
         按 correction_pipeline 配置的顺序执行各纠错步骤。
         默认顺序: hotword → rules → pycorrector → post_process
+
+        Returns:
+            (纠错后文本, 相似词候选列表 [(原词, 热词, 分数), ...])
         """
         original = text
+        all_similars: List[Tuple[str, str, float]] = []
         pipeline = [s.strip() for s in settings.correction_pipeline.split(',') if s.strip()]
 
         for step in pipeline:
@@ -241,6 +251,7 @@ class TranscriptionEngine:
                 prev = text
                 correction = self.corrector.correct(text)
                 text = correction.text
+                all_similars.extend(correction.similars)
                 if text != prev:
                     logger.debug(f"Hotword correction: {prev!r} -> {text!r}")
 
@@ -262,7 +273,7 @@ class TranscriptionEngine:
         if text != original:
             logger.debug(f"Total correction: {original!r} -> {text!r}")
 
-        return text
+        return text, all_similars
 
     def _filter_low_confidence(
         self,
@@ -324,12 +335,23 @@ class TranscriptionEngine:
 
         return sentence_info
 
+    @staticmethod
+    def _dedupe_similars(similars: List[Tuple[str, str, float]]) -> List[Tuple[str, str, float]]:
+        """去重相似词候选，同一 (原词, 热词) 对只保留最高分"""
+        seen: Dict[tuple, float] = {}
+        for orig, hw, score in similars:
+            key = (orig, hw)
+            if key not in seen or score > seen[key]:
+                seen[key] = score
+        return [(k[0], k[1], v) for k, v in sorted(seen.items(), key=lambda x: -x[1])]
+
     async def _apply_llm_polish(
         self,
         text: str,
         role: str = "default",
         prev_context: Optional[str] = None,
         next_context: Optional[str] = None,
+        similarity_candidates: Optional[List[Tuple[str, str, float]]] = None,
     ) -> str:
         """应用 LLM 润色
 
@@ -338,6 +360,7 @@ class TranscriptionEngine:
             role: LLM 角色
             prev_context: 前文上下文
             next_context: 后文上下文
+            similarity_candidates: 相似词候选 [(原词, 热词, 分数), ...]
         """
         if not text:
             return text
@@ -359,6 +382,7 @@ class TranscriptionEngine:
         messages = prompt_builder.build(
             user_content=text,
             hotwords=self._hotwords_list[:50] if self._hotwords_list else None,
+            similarity_candidates=similarity_candidates,
             rectify_context=rectify_context,
             prev_context=prev_context,
             next_context=next_context,
@@ -380,6 +404,7 @@ class TranscriptionEngine:
         self,
         text: str,
         max_chars: int = 2000,
+        similarity_candidates: Optional[List[Tuple[str, str, float]]] = None,
     ) -> str:
         """应用 LLM 全文纠错
 
@@ -389,6 +414,7 @@ class TranscriptionEngine:
         Args:
             text: 待纠错全文
             max_chars: 最大字符数限制
+            similarity_candidates: 相似词候选 [(原词, 热词, 分数), ...]
 
         Returns:
             纠错后的文本
@@ -416,6 +442,7 @@ class TranscriptionEngine:
         messages = prompt_builder.build(
             user_content=role_obj.format_user_input(text),
             hotwords=self._hotwords_list[:50] if self._hotwords_list else None,
+            similarity_candidates=similarity_candidates,
             rectify_context=rectify_context,
             include_history=False
         )
@@ -438,6 +465,7 @@ class TranscriptionEngine:
         sentences: List[Dict[str, Any]],
         role: str = "default",
         context_sentences: int = 1,
+        similarity_candidates: Optional[List[Tuple[str, str, float]]] = None,
     ) -> List[Dict[str, Any]]:
         """对句子列表应用带上下文的 LLM 润色
 
@@ -445,6 +473,7 @@ class TranscriptionEngine:
             sentences: 句子列表 [{"text": "...", ...}, ...]
             role: LLM 角色
             context_sentences: 上下文句子数
+            similarity_candidates: 相似词候选 [(原词, 热词, 分数), ...]
 
         Returns:
             润色后的句子列表
@@ -453,7 +482,9 @@ class TranscriptionEngine:
             # 不使用上下文，逐句处理
             for sent in sentences:
                 if sent.get("text"):
-                    sent["text"] = await self._apply_llm_polish(sent["text"], role=role)
+                    sent["text"] = await self._apply_llm_polish(
+                        sent["text"], role=role, similarity_candidates=similarity_candidates
+                    )
             return sentences
 
         # 使用上下文处理
@@ -480,6 +511,7 @@ class TranscriptionEngine:
                 role=role,
                 prev_context=prev_context,
                 next_context=next_context,
+                similarity_candidates=similarity_candidates,
             )
 
         return sentences
@@ -617,31 +649,47 @@ class TranscriptionEngine:
                 sentence_info, threshold=settings.confidence_threshold
             )
 
-        # 热词纠错
+        # 热词纠错 - 收集相似词候选
+        all_similars: List[Tuple[str, str, float]] = []
         if apply_hotword:
-            text = self._apply_corrections(text)
+            text, similars = self._apply_corrections(text)
+            all_similars.extend(similars)
             # 同时纠错每个句子的文本
             for sent in sentence_info:
-                sent["text"] = self._apply_corrections(sent.get("text", ""))
+                sent["text"], sent_similars = self._apply_corrections(sent.get("text", ""))
+                all_similars.extend(sent_similars)
 
-        # LLM 润色
+        # 去重相似词候选
+        all_similars = self._dedupe_similars(all_similars)
+
+        # LLM 润色 - 传入相似词候选
         if apply_llm:
             try:
                 if settings.llm_fulltext_enable:
                     text = asyncio.get_event_loop().run_until_complete(
-                        self._apply_llm_fulltext_polish(text, max_chars=settings.llm_fulltext_max_chars)
+                        self._apply_llm_fulltext_polish(
+                            text,
+                            max_chars=settings.llm_fulltext_max_chars,
+                            similarity_candidates=all_similars
+                        )
                     )
                 else:
                     text = asyncio.get_event_loop().run_until_complete(
-                        self._apply_llm_polish(text, role=llm_role)
+                        self._apply_llm_polish(text, role=llm_role, similarity_candidates=all_similars)
                     )
             except RuntimeError:
                 if settings.llm_fulltext_enable:
                     text = asyncio.run(
-                        self._apply_llm_fulltext_polish(text, max_chars=settings.llm_fulltext_max_chars)
+                        self._apply_llm_fulltext_polish(
+                            text,
+                            max_chars=settings.llm_fulltext_max_chars,
+                            similarity_candidates=all_similars
+                        )
                     )
                 else:
-                    text = asyncio.run(self._apply_llm_polish(text, role=llm_role))
+                    text = asyncio.run(
+                        self._apply_llm_polish(text, role=llm_role, similarity_candidates=all_similars)
+                    )
 
         # 说话人标注
         if with_speaker and sentence_info:
@@ -732,18 +780,30 @@ class TranscriptionEngine:
                 sentence_info, threshold=settings.confidence_threshold
             )
 
-        # 热词纠错
+        # 热词纠错 - 收集相似词候选
+        all_similars: List[Tuple[str, str, float]] = []
         if apply_hotword:
-            text = self._apply_corrections(text)
+            text, similars = self._apply_corrections(text)
+            all_similars.extend(similars)
             for sent in sentence_info:
-                sent["text"] = self._apply_corrections(sent.get("text", ""))
+                sent["text"], sent_similars = self._apply_corrections(sent.get("text", ""))
+                all_similars.extend(sent_similars)
 
-        # LLM 润色（异步）
+        # 去重相似词候选
+        all_similars = self._dedupe_similars(all_similars)
+
+        # LLM 润色（异步）- 传入相似词候选
         if apply_llm:
             if settings.llm_fulltext_enable:
-                text = await self._apply_llm_fulltext_polish(text, max_chars=settings.llm_fulltext_max_chars)
+                text = await self._apply_llm_fulltext_polish(
+                    text,
+                    max_chars=settings.llm_fulltext_max_chars,
+                    similarity_candidates=all_similars
+                )
             else:
-                text = await self._apply_llm_polish(text, role=llm_role)
+                text = await self._apply_llm_polish(
+                    text, role=llm_role, similarity_candidates=all_similars
+                )
 
         # 说话人标注
         if with_speaker and sentence_info:
@@ -867,24 +927,42 @@ class TranscriptionEngine:
         text = merged.get("text", "")
         sentences = merged.get("sentences", [])
 
-        # 全文 LLM 润色
+        # 对合并后的文本进行热词检索，收集相似词候选
+        all_similars: List[Tuple[str, str, float]] = []
+        if apply_hotword and text and self._hotwords_loaded:
+            # 对合并后的全文进行热词匹配，收集相似词候选
+            correction = self.corrector.correct(text)
+            all_similars.extend(correction.similars)
+            all_similars = self._dedupe_similars(all_similars)
+
+        # 全文 LLM 润色 - 传入相似词候选
         if apply_llm and text:
             try:
                 if settings.llm_fulltext_enable:
                     text = asyncio.get_event_loop().run_until_complete(
-                        self._apply_llm_fulltext_polish(text, max_chars=settings.llm_fulltext_max_chars)
+                        self._apply_llm_fulltext_polish(
+                            text,
+                            max_chars=settings.llm_fulltext_max_chars,
+                            similarity_candidates=all_similars
+                        )
                     )
                 else:
                     text = asyncio.get_event_loop().run_until_complete(
-                        self._apply_llm_polish(text, role=llm_role)
+                        self._apply_llm_polish(text, role=llm_role, similarity_candidates=all_similars)
                     )
             except RuntimeError:
                 if settings.llm_fulltext_enable:
                     text = asyncio.run(
-                        self._apply_llm_fulltext_polish(text, max_chars=settings.llm_fulltext_max_chars)
+                        self._apply_llm_fulltext_polish(
+                            text,
+                            max_chars=settings.llm_fulltext_max_chars,
+                            similarity_candidates=all_similars
+                        )
                     )
                 else:
-                    text = asyncio.run(self._apply_llm_polish(text, role=llm_role))
+                    text = asyncio.run(
+                        self._apply_llm_polish(text, role=llm_role, similarity_candidates=all_similars)
+                    )
 
         # 说话人标注
         if with_speaker and sentences:
@@ -950,7 +1028,7 @@ class TranscriptionEngine:
 
         # 应用纠错
         if result.get("text"):
-            result["text"] = self._apply_corrections(result["text"])
+            result["text"], _ = self._apply_corrections(result["text"])
 
         return result
 

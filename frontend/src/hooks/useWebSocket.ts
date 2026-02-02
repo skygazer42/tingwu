@@ -1,23 +1,32 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import type { WSMessage } from '@/lib/api/types'
 
+type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting'
+type LLMStatus = 'idle' | 'generating' | 'cancelled'
+
 interface UseWebSocketOptions {
   onMessage?: (message: WSMessage) => void
   onOpen?: () => void
   onClose?: () => void
   onError?: (error: Event) => void
+  onLLMStatusChange?: (status: LLMStatus) => void
   reconnectAttempts?: number
   reconnectInterval?: number
+  autoReconnect?: boolean
 }
 
 interface UseWebSocketReturn {
   isConnected: boolean
   isConnecting: boolean
+  connectionStatus: ConnectionStatus
   connectionId: string | null
+  llmStatus: LLMStatus
+  latency: number | null
   connect: () => void
   disconnect: () => void
   send: (data: string | ArrayBuffer) => void
   sendJson: (data: object) => void
+  cancelLLM: () => void
 }
 
 export function useWebSocket(
@@ -29,32 +38,44 @@ export function useWebSocket(
     onOpen,
     onClose,
     onError,
+    onLLMStatusChange,
     reconnectAttempts = 3,
     reconnectInterval = 2000,
+    autoReconnect = true,
   } = options
 
-  const [isConnected, setIsConnected] = useState(false)
-  const [isConnecting, setIsConnecting] = useState(false)
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected')
   const [connectionId, setConnectionId] = useState<string | null>(null)
+  const [llmStatus, setLLMStatus] = useState<LLMStatus>('idle')
+  const [latency, setLatency] = useState<number | null>(null)
 
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectCountRef = useRef(0)
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pingTimestampRef = useRef<number | null>(null)
 
-  const connect = useCallback(() => {
+  const isConnected = connectionStatus === 'connected'
+  const isConnecting = connectionStatus === 'connecting' || connectionStatus === 'reconnecting'
+
+  const updateLLMStatus = useCallback((status: LLMStatus) => {
+    setLLMStatus(status)
+    onLLMStatusChange?.(status)
+  }, [onLLMStatusChange])
+
+  const connect = useCallback(function connectImpl() {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       return
     }
 
-    setIsConnecting(true)
+    const isReconnect = reconnectCountRef.current > 0
+    setConnectionStatus(isReconnect ? 'reconnecting' : 'connecting')
 
     try {
       const ws = new WebSocket(url)
       wsRef.current = ws
 
       ws.onopen = () => {
-        setIsConnected(true)
-        setIsConnecting(false)
+        setConnectionStatus('connected')
         reconnectCountRef.current = 0
         onOpen?.()
       }
@@ -68,9 +89,39 @@ export function useWebSocket(
             setConnectionId(data.connection_id)
           }
 
-          // 处理心跳
+          // 处理心跳/延迟测量
           if ('type' in data && data.type === 'ping') {
             ws.send(JSON.stringify({ type: 'pong' }))
+          }
+
+          // 处理 pong 响应 (测量延迟)
+          if ('type' in data && (data as { type: string }).type === 'pong') {
+            if (pingTimestampRef.current) {
+              setLatency(Date.now() - pingTimestampRef.current)
+              pingTimestampRef.current = null
+            }
+          }
+
+          // 处理 LLM 状态消息
+          if ('llm_status' in data) {
+            const status = (data as { llm_status: string }).llm_status
+            if (status === 'generating') {
+              updateLLMStatus('generating')
+            } else if (status === 'cancelled') {
+              updateLLMStatus('cancelled')
+              // 短暂显示取消状态后重置
+              setTimeout(() => updateLLMStatus('idle'), 1000)
+            } else if (status === 'completed' || status === 'idle') {
+              updateLLMStatus('idle')
+            }
+          }
+
+          // 如果收到带有 mode 的结果消息，检查是否有 LLM 润色
+          if ('mode' in data && 'text' in data) {
+            // 结果消息，如果正在生成则标记完成
+            if (llmStatus === 'generating' && (data as { is_final?: boolean }).is_final) {
+              updateLLMStatus('idle')
+            }
           }
 
           onMessage?.(data)
@@ -80,29 +131,28 @@ export function useWebSocket(
       }
 
       ws.onclose = () => {
-        setIsConnected(false)
-        setIsConnecting(false)
+        setConnectionStatus('disconnected')
         setConnectionId(null)
+        updateLLMStatus('idle')
         onClose?.()
 
         // 尝试重连
-        if (reconnectCountRef.current < reconnectAttempts) {
+        if (autoReconnect && reconnectCountRef.current < reconnectAttempts) {
           reconnectTimeoutRef.current = setTimeout(() => {
             reconnectCountRef.current++
-            connect()
-          }, reconnectInterval)
+            connectImpl()
+          }, reconnectInterval * Math.pow(2, reconnectCountRef.current)) // 指数退避
         }
       }
 
       ws.onerror = (error) => {
-        setIsConnecting(false)
         onError?.(error)
       }
     } catch (error) {
-      setIsConnecting(false)
+      setConnectionStatus('disconnected')
       console.error('WebSocket connection error:', error)
     }
-  }, [url, onMessage, onOpen, onClose, onError, reconnectAttempts, reconnectInterval])
+  }, [url, onMessage, onOpen, onClose, onError, reconnectAttempts, reconnectInterval, autoReconnect, updateLLMStatus, llmStatus])
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -111,9 +161,10 @@ export function useWebSocket(
     reconnectCountRef.current = reconnectAttempts // 防止重连
     wsRef.current?.close()
     wsRef.current = null
-    setIsConnected(false)
+    setConnectionStatus('disconnected')
     setConnectionId(null)
-  }, [reconnectAttempts])
+    updateLLMStatus('idle')
+  }, [reconnectAttempts, updateLLMStatus])
 
   const send = useCallback((data: string | ArrayBuffer) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -124,6 +175,16 @@ export function useWebSocket(
   const sendJson = useCallback((data: object) => {
     send(JSON.stringify(data))
   }, [send])
+
+  /**
+   * 取消 LLM 生成
+   */
+  const cancelLLM = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN && llmStatus === 'generating') {
+      sendJson({ type: 'cancel_llm' })
+      updateLLMStatus('cancelled')
+    }
+  }, [sendJson, llmStatus, updateLLMStatus])
 
   // 清理
   useEffect(() => {
@@ -138,10 +199,14 @@ export function useWebSocket(
   return {
     isConnected,
     isConnecting,
+    connectionStatus,
     connectionId,
+    llmStatus,
+    latency,
     connect,
     disconnect,
     send,
     sendJson,
+    cancelLLM,
   }
 }

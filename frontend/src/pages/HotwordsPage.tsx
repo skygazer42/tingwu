@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -11,7 +11,8 @@ import { getHotwords, updateHotwords, appendHotwords, reloadHotwords } from '@/l
 
 export default function HotwordsPage() {
   const queryClient = useQueryClient()
-  const [editText, setEditText] = useState('')
+  const [draftText, setDraftText] = useState('')
+  const [isDirty, setIsDirty] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
 
   // 获取热词列表
@@ -20,11 +21,16 @@ export default function HotwordsPage() {
     queryFn: getHotwords,
   })
 
+  const serverText = (data?.hotwords ?? []).join('\n')
+  const editText = isDirty ? draftText : serverText
+
   // 更新热词
   const updateMutation = useMutation({
     mutationFn: (hotwords: string[]) => updateHotwords(hotwords),
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['hotwords'] })
+      setIsDirty(false)
+      setDraftText('')
       toast.success(`热词更新成功，共 ${response.count} 个`)
     },
     onError: () => {
@@ -37,6 +43,8 @@ export default function HotwordsPage() {
     mutationFn: (hotwords: string[]) => appendHotwords(hotwords),
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['hotwords'] })
+      setIsDirty(false)
+      setDraftText('')
       toast.success(response.message)
     },
     onError: () => {
@@ -49,19 +57,14 @@ export default function HotwordsPage() {
     mutationFn: reloadHotwords,
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['hotwords'] })
+      setIsDirty(false)
+      setDraftText('')
       toast.success(response.message)
     },
     onError: () => {
       toast.error('重载热词失败')
     },
   })
-
-  // 初始化编辑框
-  useEffect(() => {
-    if (data?.hotwords) {
-      setEditText(data.hotwords.join('\n'))
-    }
-  }, [data])
 
   // 解析编辑框内容为热词数组
   const parseHotwords = (text: string): string[] => {
@@ -124,7 +127,10 @@ export default function HotwordsPage() {
             <Textarea
               placeholder="输入热词，每行一个...&#10;# 这是注释&#10;麦当劳&#10;肯德基&#10;Bilibili"
               value={editText}
-              onChange={(e) => setEditText(e.target.value)}
+              onChange={(e) => {
+                if (!isDirty) setIsDirty(true)
+                setDraftText(e.target.value)
+              }}
               className="min-h-[300px] font-mono text-sm"
             />
             <div className="flex flex-wrap gap-2">
