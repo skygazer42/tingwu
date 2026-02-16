@@ -38,6 +38,8 @@ class AudioPreprocessor:
         silence_threshold_db: float = -40.0,
         min_silence_ms: int = 500,
         normalize_enable: bool = True,
+        normalize_robust_rms_enable: bool = False,
+        normalize_robust_rms_percentile: float = 95.0,
         trim_silence_enable: bool = False,
         denoise_enable: bool = False,
         denoise_prop: float = 0.8,
@@ -62,6 +64,8 @@ class AudioPreprocessor:
             silence_threshold_db: 静音判定阈值 (dB)，默认 -40 dB
             min_silence_ms: 最小静音时长 (毫秒)，默认 500ms
             normalize_enable: 是否启用音量归一化
+            normalize_robust_rms_enable: 是否启用“鲁棒 RMS”（优先对活跃段对齐，避免长静音导致过度放大）
+            normalize_robust_rms_percentile: 鲁棒 RMS 取样分位（95 表示使用最响的约 5% 帧计算 RMS）
             trim_silence_enable: 是否启用静音裁剪
             denoise_enable: 是否启用降噪
             denoise_prop: 降噪强度 (0-1)，默认 0.8
@@ -82,6 +86,8 @@ class AudioPreprocessor:
         self.silence_threshold_db = silence_threshold_db
         self.min_silence_ms = min_silence_ms
         self.normalize_enable = normalize_enable
+        self.normalize_robust_rms_enable = normalize_robust_rms_enable
+        self.normalize_robust_rms_percentile = normalize_robust_rms_percentile
         self.trim_silence_enable = trim_silence_enable
         self.denoise_enable = denoise_enable
         self.denoise_prop = denoise_prop
@@ -240,6 +246,62 @@ class AudioPreprocessor:
         rms = self.get_rms(audio)
         return self._amplitude_to_db(rms)
 
+    def _estimate_robust_rms(
+        self,
+        audio: np.ndarray,
+        *,
+        sample_rate: int,
+        percentile: float,
+    ) -> float:
+        """Estimate a "robust" RMS using only the loudest frames.
+
+        This is mainly to avoid long silences dragging RMS down and causing the
+        whole file to be over-amplified (which can hurt ASR on noisy recordings).
+
+        `percentile=95` roughly means: use the loudest ~5% frames to estimate RMS.
+        """
+        if len(audio) == 0:
+            return 0.0
+
+        sr = int(sample_rate) if int(sample_rate or 0) > 0 else 16000
+        frame_length = int(sr * 0.025)  # 25ms
+        hop_length = int(sr * 0.010)    # 10ms
+        if frame_length <= 0 or hop_length <= 0:
+            return float(self.get_rms(audio))
+
+        num_frames = (len(audio) - frame_length) // hop_length + 1
+        if num_frames <= 0:
+            return float(self.get_rms(audio))
+
+        frame_energies = np.empty((num_frames,), dtype=np.float32)
+        for i in range(num_frames):
+            start = i * hop_length
+            end = start + frame_length
+            frame = audio[start:end]
+            frame_energies[i] = float(np.mean(frame ** 2))
+
+        p = float(percentile)
+        if not np.isfinite(p):
+            return float(self.get_rms(audio))
+        p = max(0.0, min(100.0, p))
+
+        keep_fraction = (100.0 - p) / 100.0
+        keep_top = int(np.ceil(num_frames * keep_fraction))
+        keep_top = max(1, min(num_frames, keep_top))
+
+        if keep_top >= num_frames:
+            energy = float(np.mean(frame_energies))
+            return float(np.sqrt(energy))
+
+        # Select the loudest frames by count (not by value) to avoid issues when
+        # many frames are exactly 0 (pure silence spans).
+        idx = np.argpartition(frame_energies, -keep_top)[-keep_top:]
+        selected = frame_energies[idx]
+        energy = float(np.mean(selected))
+        if not np.isfinite(energy) or energy < 0.0:
+            return float(self.get_rms(audio))
+        return float(np.sqrt(energy))
+
     def normalize_volume(self, audio: np.ndarray, sample_rate: int = 16000) -> np.ndarray:
         """
         RMS 音量归一化
@@ -256,8 +318,19 @@ class AudioPreprocessor:
         if len(audio) == 0:
             return audio
 
-        # 计算当前 RMS
-        current_rms = self.get_rms(audio)
+        # Default to global RMS, but allow a more robust estimate that focuses
+        # on the loudest frames (speech/music), which is often better for long
+        # recordings with lots of silence.
+        global_rms = float(self.get_rms(audio))
+        current_rms = global_rms
+        if self.normalize_robust_rms_enable:
+            robust_rms = self._estimate_robust_rms(
+                audio,
+                sample_rate=sample_rate,
+                percentile=self.normalize_robust_rms_percentile,
+            )
+            if np.isfinite(robust_rms) and robust_rms > 0.0:
+                current_rms = float(robust_rms)
 
         if current_rms < 1e-10:
             # 静音或接近静音，不处理
@@ -533,10 +606,15 @@ class AudioPreprocessor:
             snr = self.estimate_snr(audio, sample_rate)
             logger.debug(f"Estimated SNR: {snr:.1f} dB (threshold: {self.snr_threshold} dB)")
 
-            # 低 SNR 时启用降噪
+            # Adaptive denoising:
+            # - Low SNR: enable denoise (even if denoise_enable=False) to improve intelligibility.
+            # - High SNR: disable denoise (even if denoise_enable=True) to avoid damaging clean audio.
             if snr < self.snr_threshold:
                 should_denoise = True
                 logger.debug(f"Adaptive: enabling denoising (SNR={snr:.1f} < {self.snr_threshold})")
+            else:
+                should_denoise = False
+                logger.debug(f"Adaptive: skipping denoising (SNR={snr:.1f} >= {self.snr_threshold})")
 
             # 检测是否有大量静音
             rms_db = self.get_rms_db(audio)

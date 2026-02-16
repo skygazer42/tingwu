@@ -50,6 +50,8 @@ def _build_request_preprocessor(preprocess_options: Optional[Dict[str, Any]]) ->
         "silence_threshold_db": settings.audio_silence_threshold_db,
         "min_silence_ms": 500,
         "normalize_enable": settings.audio_normalize_enable,
+        "normalize_robust_rms_enable": False,
+        "normalize_robust_rms_percentile": 95.0,
         "trim_silence_enable": settings.audio_trim_silence_enable,
         "denoise_enable": settings.audio_denoise_enable,
         "denoise_prop": settings.audio_denoise_prop,

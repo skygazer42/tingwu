@@ -19,6 +19,8 @@ _TOP_LEVEL_KEYS = {"preprocess", "chunking", "backend", "postprocess", "debug"}
 
 _PREPROCESS_KEYS = {
     "normalize_enable",
+    "normalize_robust_rms_enable",
+    "normalize_robust_rms_percentile",
     "target_db",
     "trim_silence_enable",
     "silence_threshold_db",
@@ -69,6 +71,8 @@ _POSTPROCESS_KEYS = {
 
 _PREPROCESS_TYPES: Dict[str, str] = {
     "normalize_enable": "bool",
+    "normalize_robust_rms_enable": "bool",
+    "normalize_robust_rms_percentile": "number",
     "target_db": "number",
     "trim_silence_enable": "bool",
     "silence_threshold_db": "number",
@@ -262,6 +266,12 @@ def _validate_ranges(obj: Dict[str, Any]) -> None:
             prop = preprocess.get("denoise_prop")
             if isinstance(prop, (int, float)) and not (0.0 <= float(prop) <= 1.0):
                 raise ValueError("asr_options.preprocess.denoise_prop must be within [0, 1]")
+        if "normalize_robust_rms_percentile" in preprocess:
+            pct = preprocess.get("normalize_robust_rms_percentile")
+            if isinstance(pct, (int, float)) and not (0.0 <= float(pct) <= 100.0):
+                raise ValueError(
+                    "asr_options.preprocess.normalize_robust_rms_percentile must be within [0, 100]"
+                )
         if "highpass_cutoff_hz" in preprocess:
             cutoff = preprocess.get("highpass_cutoff_hz")
             if isinstance(cutoff, (int, float)) and not (float(cutoff) > 0.0):
