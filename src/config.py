@@ -66,6 +66,19 @@ class Settings(BaseSettings):
     # - ignore: 忽略说话人（按 with_speaker=false 处理，适合多端口部署）
     speaker_unsupported_behavior: Optional[Literal["error", "fallback", "ignore"]] = None
 
+    # ------------------------------------------------------------
+    # Speaker fallback diarization (辅助说话人分离)
+    # ------------------------------------------------------------
+    # 当当前后端不支持说话人识别（例如 Qwen3-ASR），但用户请求 with_speaker=true 时：
+    # - 可选：调用一个“辅助 TingWu 服务”（通常是 tingwu-pytorch）获取说话人分段
+    # - 然后按说话人 turn 切片用当前后端转写，从而输出说话人1/2/3...
+    # 失败会自动回退到 speaker_unsupported_behavior 的逻辑（推荐 ignore）。
+    speaker_fallback_diarization_enable: bool = False
+    speaker_fallback_diarization_base_url: str = ""
+    speaker_fallback_diarization_timeout_s: float = 30.0
+    speaker_fallback_max_turn_duration_s: float = 25.0
+    speaker_fallback_max_turns: int = 200
+
     # GGUF 后端配置 (FunASR-Nano-GGUF)
     gguf_encoder_path: str = "models/Fun-ASR-Nano-Encoder-Adaptor.fp32.onnx"
     gguf_ctc_path: str = "models/Fun-ASR-Nano-CTC.int8.onnx"
