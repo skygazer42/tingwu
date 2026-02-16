@@ -20,6 +20,7 @@ These items are already done in the current workspace:
 - HTTP `/api/v1/transcribe` and batch now call `transcribe_auto_async` to auto-chunk long audio (`src/api/routes/transcribe.py`)
 - URL async handler now uses long-audio chunking (`src/api/routes/async_transcribe.py`)
 - Chunk splitting now prefers the latest silence near `target_end` (`src/core/audio/chunker.py`) + tests (`tests/test_audio_chunker_split.py`)
+- Optional boundary reconcile injects a re-transcribed bridge window at each chunk boundary (`src/core/audio/boundary_reconcile.py`, `src/core/engine.py`) + tests (`tests/test_boundary_reconcile.py`)
 - Chunk sentence merge now dedupes overlap sentences (time + tail-text heuristic) (`src/core/audio/chunker.py`) + tests (`tests/test_audio_chunker_sentences.py`)
 - Audio diagnostics now include `dc_offset` + `clipping_ratio` (`src/core/audio/preprocessor.py`) + tests (`tests/test_audio_diagnostics.py`)
 - Preprocessing now removes DC offset by default (`src/core/audio/preprocessor.py`) + tests (`tests/test_audio_preprocess_dc_offset.py`)

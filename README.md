@@ -109,6 +109,17 @@ curl -X POST "http://localhost:8102/api/v1/transcribe" \
   -F 'asr_options={"chunking":{"max_chunk_duration_s":30,"overlap_chars":40,"max_workers":1}}'
 ```
 
+示例：边界重解码/对齐（更偏准确率，明显更慢；适合长音频 chunk 边界容易漏字/断词的场景）
+
+> 该模式会对每个 chunk 边界额外转写一个小窗口（`boundary_reconcile_window_s` 表示边界左右各多少秒），
+> 再把这段“桥接文本”插入合并流程来减少边界缺字/重复。
+
+```bash
+curl -X POST "http://localhost:8101/api/v1/transcribe" \
+  -F "file=@/path/to/audio.wav" \
+  -F 'asr_options={"chunking":{"boundary_reconcile_enable":true,"boundary_reconcile_window_s":1.0}}'
+```
+
 示例：单次请求关闭音量归一化 + DC offset（用于排查“预处理是否伤准确率”）
 
 ```bash

@@ -27,3 +27,15 @@ def test_asr_options_preprocess_highpass_and_limiter_keys_allowed():
 def test_asr_options_preprocess_highpass_cutoff_must_be_positive():
     with pytest.raises(ValueError, match="highpass_cutoff_hz"):
         parse_asr_options('{"preprocess":{"highpass_enable":true,"highpass_cutoff_hz":-1}}')
+
+
+def test_asr_options_chunking_boundary_reconcile_keys_allowed():
+    opts = parse_asr_options('{"chunking":{"boundary_reconcile_enable":true,"boundary_reconcile_window_s":0.5}}')
+    assert opts is not None
+    assert opts["chunking"]["boundary_reconcile_enable"] is True
+    assert opts["chunking"]["boundary_reconcile_window_s"] == 0.5
+
+
+def test_asr_options_chunking_boundary_reconcile_window_must_be_non_negative():
+    with pytest.raises(ValueError, match="boundary_reconcile_window_s"):
+        parse_asr_options('{"chunking":{"boundary_reconcile_enable":true,"boundary_reconcile_window_s":-0.1}}')

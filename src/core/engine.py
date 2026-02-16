@@ -1088,8 +1088,12 @@ class TranscriptionEngine:
             if isinstance(chunking_options.get("max_workers"), int):
                 max_workers = int(chunking_options["max_workers"])
             overlap_chars = int(chunking_options.get("overlap_chars", 20) or 0)
+            boundary_reconcile_enable = bool(chunking_options.get("boundary_reconcile_enable", False))
+            boundary_reconcile_window_s = float(chunking_options.get("boundary_reconcile_window_s", 1.0) or 0.0)
         else:
             overlap_chars = 20
+            boundary_reconcile_enable = False
+            boundary_reconcile_window_s = 0.0
 
         if isinstance(audio_input, np.ndarray):
             audio = audio_input.astype(np.float32, copy=False)
@@ -1196,6 +1200,42 @@ class TranscriptionEngine:
         chunk_results = chunker.process_parallel(
             chunks, transcribe_chunk, max_workers=max_workers
         )
+
+        # Optional boundary reconciliation (accuracy-first, slower):
+        # Re-transcribe a small window around each chunk split and inject it as a
+        # "bridge" result to reduce boundary misses/duplication.
+        #
+        # NOTE: We currently skip this when diarization is enabled because it may
+        # desync `text` vs `sentences`/`transcript` (bridge results don't have stable speaker segments).
+        if boundary_reconcile_enable and boundary_reconcile_window_s > 0.0 and not with_speaker:
+            try:
+                from src.core.audio.boundary_reconcile import build_boundary_bridge_results
+
+                def _transcribe_bridge(pcm16le: bytes) -> str:
+                    raw_bridge = backend.transcribe(
+                        pcm16le,
+                        hotwords=injection_hotwords,
+                        with_speaker=False,
+                        **effective_backend_kwargs,
+                    )
+                    return str(raw_bridge.get("text", "") or "")
+
+                bridge_results = build_boundary_bridge_results(
+                    audio,
+                    chunk_results,
+                    sample_rate=sample_rate,
+                    overlap_duration_s=chunker.overlap_duration,
+                    window_half_s=boundary_reconcile_window_s,
+                    transcribe_pcm16le=_transcribe_bridge,
+                )
+                if bridge_results:
+                    logger.info(
+                        f"Boundary reconcile enabled: injecting {len(bridge_results)} bridge windows "
+                        f"(window_half={boundary_reconcile_window_s:.2f}s)"
+                    )
+                    chunk_results = chunk_results + bridge_results
+            except Exception as e:
+                logger.warning(f"Boundary reconcile failed (ignored): {e}")
 
         # 合并结果
         merged = chunker.merge_results(chunk_results, sample_rate, overlap_chars=overlap_chars)

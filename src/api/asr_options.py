@@ -47,6 +47,8 @@ _CHUNKING_KEYS = {
     "overlap_duration_s",
     "silence_threshold_db",
     "min_silence_duration_s",
+    "boundary_reconcile_enable",
+    "boundary_reconcile_window_s",
     "max_workers",
     "overlap_chars",
 }
@@ -99,6 +101,8 @@ _CHUNKING_TYPES: Dict[str, str] = {
     "overlap_duration_s": "number",
     "silence_threshold_db": "number",
     "min_silence_duration_s": "number",
+    "boundary_reconcile_enable": "bool",
+    "boundary_reconcile_window_s": "number",
     "max_workers": "int",
     "overlap_chars": "int",
 }
@@ -292,6 +296,10 @@ def _validate_ranges(obj: Dict[str, Any]) -> None:
                 v = chunking.get(k)
                 if isinstance(v, (int, float)) and float(v) < 0.0:
                     raise ValueError(f"asr_options.chunking.{k} must be >= 0")
+        if "boundary_reconcile_window_s" in chunking:
+            bw = chunking.get("boundary_reconcile_window_s")
+            if isinstance(bw, (int, float)) and float(bw) < 0.0:
+                raise ValueError("asr_options.chunking.boundary_reconcile_window_s must be >= 0")
         if "max_workers" in chunking:
             mw = chunking.get("max_workers")
             if isinstance(mw, int) and mw < 1:
