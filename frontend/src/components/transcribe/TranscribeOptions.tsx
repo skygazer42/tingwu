@@ -4,12 +4,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { useQuery } from '@tanstack/react-query'
 import { useBackendStore, useTranscriptionStore } from '@/stores'
 import { getBackendInfo } from '@/lib/api'
-import { useMemo } from 'react'
-import { Sparkles, Users, BookText, Bot, Server } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { useMemo, useState } from 'react'
+import { Sparkles, Users, BookText, Bot, Server, Braces, ChevronDown } from 'lucide-react'
 
 const PRESET_BACKENDS: Array<{ label: string; value: string; baseUrl: string }> = [
   // Radix Select `value` must be non-empty, so we use a sentinel for relative baseUrl.
@@ -24,8 +27,18 @@ const PRESET_BACKENDS: Array<{ label: string; value: string; baseUrl: string }> 
 ]
 
 export function TranscribeOptions() {
-  const { options, setOptions, tempHotwords, setTempHotwords } = useTranscriptionStore()
+  const {
+    options,
+    setOptions,
+    tempHotwords,
+    setTempHotwords,
+    advancedAsrOptionsText,
+    setAdvancedAsrOptionsText,
+    advancedAsrOptionsError,
+    setAdvancedAsrOptionsError,
+  } = useTranscriptionStore()
   const { baseUrl, setBaseUrl } = useBackendStore()
+  const [advancedOpen, setAdvancedOpen] = useState(false)
 
   const backendOptions = useMemo(() => {
     if (!baseUrl || PRESET_BACKENDS.some((b) => b.value === baseUrl)) {
@@ -47,6 +60,31 @@ export function TranscribeOptions() {
   })
 
   const supportsSpeaker = backendInfoQuery.data?.capabilities.supports_speaker
+  const advancedEnabled = advancedAsrOptionsText.trim().length > 0
+
+  const applyAsrOptionsTemplate = (template: Record<string, unknown>) => {
+    setAdvancedAsrOptionsText(JSON.stringify(template, null, 2))
+    setAdvancedAsrOptionsError(null)
+    setAdvancedOpen(true)
+  }
+
+  const formatAdvancedAsrOptions = () => {
+    const s = advancedAsrOptionsText.trim()
+    if (!s) {
+      return
+    }
+    try {
+      const obj: unknown = JSON.parse(s)
+      if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
+        setAdvancedAsrOptionsError('必须是 JSON 对象（例如 {"postprocess": {...}}）')
+        return
+      }
+      setAdvancedAsrOptionsText(JSON.stringify(obj, null, 2))
+      setAdvancedAsrOptionsError(null)
+    } catch (e) {
+      setAdvancedAsrOptionsError(e instanceof Error ? e.message : 'JSON 解析失败')
+    }
+  }
 
   return (
     <Card>
@@ -242,6 +280,180 @@ export function TranscribeOptions() {
             临时热词仅对本次转写有效，不会保存到热词库
           </p>
         </div>
+
+        {/* 高级 asr_options */}
+        <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+          <CollapsibleTrigger className="flex items-center justify-between w-full p-2 rounded-lg hover:bg-muted transition-colors">
+            <div className="flex items-center gap-3">
+              <Braces className="h-5 w-5 text-muted-foreground" />
+              <div className="text-left">
+                <div className="flex items-center gap-2">
+                  <span className="text-base font-medium">高级 asr_options</span>
+                  {advancedAsrOptionsError ? (
+                    <Badge
+                      variant="outline"
+                      className="border-red-200 text-red-700 bg-red-500/5"
+                    >
+                      JSON 无效
+                    </Badge>
+                  ) : advancedEnabled ? (
+                    <Badge
+                      variant="outline"
+                      className="border-green-200 text-green-700 bg-green-500/5"
+                    >
+                      已启用
+                    </Badge>
+                  ) : null}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  直接透传 JSON：分块/后处理/说话人格式（后端会严格校验 allowlist）
+                </p>
+              </div>
+            </div>
+
+            <ChevronDown
+              className={cn(
+                'h-4 w-4 text-muted-foreground transition-transform',
+                !advancedOpen && '-rotate-90'
+              )}
+            />
+          </CollapsibleTrigger>
+
+          <CollapsibleContent className="ml-8 pt-2 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="xs"
+                onClick={() =>
+                  applyAsrOptionsTemplate({
+                    postprocess: {
+                      acronym_merge_enable: true,
+                      spacing_cjk_ascii_enable: true,
+                      punc_convert_enable: true,
+                      punc_merge_enable: true,
+                    },
+                  })
+                }
+              >
+                Qwen3 强后处理
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="xs"
+                onClick={() =>
+                  applyAsrOptionsTemplate({
+                    chunking: {
+                      strategy: 'silence',
+                      max_chunk_duration_s: 20,
+                      min_chunk_duration_s: 5,
+                      overlap_duration_s: 1.0,
+                      silence_threshold_db: -38,
+                      min_silence_duration_s: 0.35,
+                      boundary_reconcile_enable: true,
+                      boundary_reconcile_window_s: 1.5,
+                      max_workers: 2,
+                      overlap_chars: 20,
+                    },
+                  })
+                }
+              >
+                长音频 准确率优先
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="xs"
+                onClick={() => {
+                  setOptions({ with_speaker: true, speaker_label_style: 'numeric' })
+                  applyAsrOptionsTemplate({
+                    speaker: {
+                      label_style: 'numeric',
+                      turn_merge_enable: true,
+                      turn_merge_gap_ms: 800,
+                      turn_merge_min_chars: 1,
+                    },
+                    postprocess: {
+                      spacing_cjk_ascii_enable: true,
+                      punc_convert_enable: true,
+                      punc_merge_enable: true,
+                    },
+                  })
+                }}
+              >
+                会议（段落+格式）
+              </Button>
+
+              <div className="ml-auto flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  onClick={formatAdvancedAsrOptions}
+                  disabled={!advancedEnabled}
+                >
+                  格式化
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => {
+                    setAdvancedAsrOptionsText('')
+                    setAdvancedAsrOptionsError(null)
+                  }}
+                  disabled={!advancedEnabled && !advancedAsrOptionsError}
+                >
+                  清空
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Textarea
+                value={advancedAsrOptionsText}
+                onChange={(e) => {
+                  const next = e.target.value
+                  setAdvancedAsrOptionsText(next)
+
+                  const s = next.trim()
+                  if (!s) {
+                    setAdvancedAsrOptionsError(null)
+                    return
+                  }
+                  try {
+                    const obj: unknown = JSON.parse(s)
+                    if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
+                      setAdvancedAsrOptionsError('必须是 JSON 对象（例如 {"postprocess": {...}}）')
+                      return
+                    }
+                    setAdvancedAsrOptionsError(null)
+                  } catch (e) {
+                    setAdvancedAsrOptionsError(e instanceof Error ? e.message : 'JSON 解析失败')
+                  }
+                }}
+                placeholder='例如：{"postprocess":{"acronym_merge_enable":true}}'
+                className="min-h-[160px] font-mono text-xs"
+              />
+
+              {advancedAsrOptionsError && (
+                <p className="text-xs text-destructive">
+                  JSON 无效：{advancedAsrOptionsError}
+                </p>
+              )}
+
+              <p className="text-xs text-muted-foreground">
+                支持字段：<code className="font-mono">preprocess</code> /{' '}
+                <code className="font-mono">chunking</code> /{' '}
+                <code className="font-mono">postprocess</code> /{' '}
+                <code className="font-mono">speaker</code> /{' '}
+                <code className="font-mono">backend</code> /{' '}
+                <code className="font-mono">debug</code>。
+              </p>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       </CardContent>
     </Card>
   )
