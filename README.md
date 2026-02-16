@@ -117,6 +117,24 @@ curl -X POST "http://localhost:8101/api/v1/transcribe" \
   -F 'asr_options={"preprocess":{"normalize_enable":false,"remove_dc_offset":false}}'
 ```
 
+示例：长音频（大量静音/停顿）更稳的音量归一化（更偏准确率，避免把静音/底噪整体放大）
+
+> `normalize_robust_rms_percentile=95` 大致表示：用最响的约 5% 帧估算“有效音量”，更接近“语音段 RMS”，而不是整段音频的平均 RMS。
+
+```bash
+curl -X POST "http://localhost:8101/api/v1/transcribe" \
+  -F "file=@/path/to/audio.wav" \
+  -F 'asr_options={"preprocess":{"normalize_enable":true,"normalize_robust_rms_enable":true,"normalize_robust_rms_percentile":95}}'
+```
+
+示例：自适应降噪 gating（高 SNR 自动跳过降噪，低 SNR 才启用；更偏准确率）
+
+```bash
+curl -X POST "http://localhost:8101/api/v1/transcribe" \
+  -F "file=@/path/to/audio.wav" \
+  -F 'asr_options={"preprocess":{"adaptive_enable":true,"snr_threshold":20,"denoise_enable":true}}'
+```
+
 #### 模型缓存
 
 模型存储在 Docker Volume 中，可查看下载状态：
