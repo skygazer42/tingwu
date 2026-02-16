@@ -163,6 +163,7 @@ curl -X POST "http://localhost:8200/api/v1/transcribe" \
 - `speaker_turns`：合并后的 turn 列表（更适合人类阅读/导出）
 - `sentences`：句级时间戳（更适合时间轴/字幕等）
 - 如果后端不支持说话人识别且 `SPEAKER_STRICT_BACKEND=true`（默认），会直接返回 400（推荐用 `vibevoice` 或 `router` 后端做说话人）
+- 一键脚本：`scripts/transcribe_meeting.sh /path/to/meeting.wav http://localhost:8200`
 
 #### 模型缓存
 
