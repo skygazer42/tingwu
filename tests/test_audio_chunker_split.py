@@ -46,3 +46,23 @@ def test_audio_chunker_prefers_latest_silence_near_target_end():
     second_start = chunks[1][1]
     assert second_start >= _sec_to_samples(8.8, sr)
 
+
+def test_audio_chunker_time_strategy_splits_by_duration_without_silence():
+    sr = 16000
+    audio = np.full((_sec_to_samples(25.0, sr),), 0.1, dtype=np.float32)
+
+    chunker = AudioChunker(
+        max_chunk_duration=10.0,
+        min_chunk_duration=5.0,
+        overlap_duration=2.0,
+        silence_threshold_db=-40.0,
+        min_silence_duration=0.3,
+        strategy="time",
+    )
+
+    chunks = chunker.split(audio, sample_rate=sr)
+    assert len(chunks) == 3
+
+    # Time strategy should split around target_end (10s), and the next chunk starts at (10s - overlap).
+    assert chunks[0][1] == 0
+    assert chunks[1][1] == _sec_to_samples(8.0, sr)

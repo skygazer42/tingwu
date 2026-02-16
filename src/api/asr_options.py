@@ -34,6 +34,7 @@ _PREPROCESS_KEYS = {
 }
 
 _CHUNKING_KEYS = {
+    "strategy",
     "max_chunk_duration_s",
     "min_chunk_duration_s",
     "overlap_duration_s",
@@ -78,6 +79,7 @@ _PREPROCESS_TYPES: Dict[str, str] = {
 }
 
 _CHUNKING_TYPES: Dict[str, str] = {
+    "strategy": "str",
     "max_chunk_duration_s": "number",
     "min_chunk_duration_s": "number",
     "overlap_duration_s": "number",
@@ -147,6 +149,17 @@ def parse_asr_options(asr_options_str: Optional[str]) -> Optional[Dict[str, Any]
     _validate_section_types(obj, "preprocess", type_map=_PREPROCESS_TYPES)
     _validate_section_types(obj, "chunking", type_map=_CHUNKING_TYPES)
     _validate_section_types(obj, "postprocess", type_map=_POSTPROCESS_TYPES)
+
+    chunking = obj.get("chunking") or {}
+    if isinstance(chunking, dict) and "strategy" in chunking:
+        strategy = chunking.get("strategy")
+        if isinstance(strategy, str):
+            normalized = strategy.strip().lower()
+        else:
+            normalized = None
+        if normalized not in ("silence", "time"):
+            raise ValueError("asr_options.chunking.strategy must be one of: silence, time")
+        chunking["strategy"] = normalized
 
     backend = obj.get("backend")
     if backend is not None:

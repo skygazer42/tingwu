@@ -286,6 +286,11 @@ class TranscriptionEngine:
         except Exception:
             silence_threshold_db = -40.0
 
+        base_strategy = getattr(self.audio_chunker, "strategy", "silence")
+        strategy = chunking_options.get("strategy", base_strategy)
+        if not isinstance(strategy, str) or not strategy.strip():
+            strategy = base_strategy
+
         max_chunk = float(chunking_options.get("max_chunk_duration_s", self.audio_chunker.max_chunk_duration))
         min_chunk = float(chunking_options.get("min_chunk_duration_s", self.audio_chunker.min_chunk_duration))
         overlap = float(chunking_options.get("overlap_duration_s", self.audio_chunker.overlap_duration))
@@ -306,6 +311,7 @@ class TranscriptionEngine:
             overlap_duration=overlap,
             silence_threshold_db=silence_db,
             min_silence_duration=min_silence,
+            strategy=str(strategy).strip().lower(),
         )
 
     def _get_request_backend_kwargs(self, asr_options: Optional[Dict[str, Any]]) -> Dict[str, Any]:

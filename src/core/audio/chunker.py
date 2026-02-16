@@ -37,6 +37,7 @@ class AudioChunker:
         overlap_duration: float = 0.5,
         silence_threshold_db: float = -40.0,
         min_silence_duration: float = 0.3,
+        strategy: str = "silence",
     ):
         """
         初始化分块器
@@ -47,12 +48,52 @@ class AudioChunker:
             overlap_duration: 分块重叠时长(秒)
             silence_threshold_db: 静音检测阈值(dB)
             min_silence_duration: 最小静音时长(秒)，用于检测分割点
+            strategy: 分块策略:
+                - "silence": 优先选择静音分割点 (默认)
+                - "time": 固定时长切片 (CapsWriter-style，不依赖静音/VAD)
         """
         self.max_chunk_duration = max_chunk_duration
         self.min_chunk_duration = min_chunk_duration
         self.overlap_duration = overlap_duration
         self.silence_threshold = 10 ** (silence_threshold_db / 20)
         self.min_silence_duration = min_silence_duration
+        self.strategy = strategy
+
+    def _split_by_time(
+        self,
+        audio: np.ndarray,
+        sample_rate: int = 16000,
+    ) -> List[Tuple[np.ndarray, int, int]]:
+        """固定时长切片 + overlap (不依赖静音检测)."""
+        duration = len(audio) / sample_rate
+        if duration <= self.max_chunk_duration:
+            return [(audio, 0, len(audio))]
+
+        max_samples = int(self.max_chunk_duration * sample_rate)
+        min_samples = int(self.min_chunk_duration * sample_rate)
+        overlap_samples = int(self.overlap_duration * sample_rate)
+
+        chunks: List[Tuple[np.ndarray, int, int]] = []
+        current_start = 0
+
+        while current_start < len(audio):
+            target_end = min(current_start + max_samples, len(audio))
+
+            if target_end >= len(audio):
+                chunks.append((audio[current_start:], current_start, len(audio)))
+                break
+
+            best_split = target_end
+            chunk_end = min(best_split + overlap_samples, len(audio))
+            chunks.append((audio[current_start:chunk_end], current_start, chunk_end))
+
+            next_start = max(best_split - overlap_samples, current_start + min_samples)
+            if next_start <= current_start:
+                # Guard against stalling (e.g. weird min/overlap settings).
+                next_start = min(current_start + max(1, min_samples), len(audio))
+            current_start = next_start
+
+        return chunks
 
     def _find_silence_points(
         self,
@@ -128,6 +169,12 @@ class AudioChunker:
         if duration <= self.max_chunk_duration:
             return [(audio, 0, len(audio))]
 
+        strategy = (getattr(self, "strategy", None) or "silence").strip().lower()
+        if strategy == "time":
+            chunks = self._split_by_time(audio, sample_rate=sample_rate)
+            logger.info(f"Split audio ({duration:.1f}s) into {len(chunks)} chunks (strategy=time)")
+            return chunks
+
         # 找到所有静音分割点
         silence_points = self._find_silence_points(audio, sample_rate)
 
@@ -168,7 +215,7 @@ class AudioChunker:
             # 下一个块的起始位置 (减去重叠)
             current_start = max(best_split - overlap_samples, current_start + min_samples)
 
-        logger.info(f"Split audio ({duration:.1f}s) into {len(chunks)} chunks")
+        logger.info(f"Split audio ({duration:.1f}s) into {len(chunks)} chunks (strategy=silence)")
         return chunks
 
     def process_parallel(
