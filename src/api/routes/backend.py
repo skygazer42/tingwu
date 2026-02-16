@@ -11,7 +11,7 @@ from fastapi import APIRouter
 
 from src.api.schemas import BackendCapabilities, BackendInfoResponse
 from src.config import settings
-from src.core.engine import model_manager
+import src.core.engine as engine_mod
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ def _cap_bool(value: object) -> bool:
 
 @router.get("/backend", response_model=BackendInfoResponse)
 async def get_backend_info() -> BackendInfoResponse:
-    backend = model_manager.backend
+    backend = engine_mod.model_manager.backend
 
     info = {}
     try:
