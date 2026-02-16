@@ -35,6 +35,16 @@ class TestRoleSystem:
         assert role.name == "code"
         assert "代码" in role.system_prompt
 
+    def test_meeting_role(self):
+        """测试会议角色"""
+        from src.core.llm.roles import get_role, MeetingRole
+
+        role = get_role("meeting")
+        assert role is not None
+        assert isinstance(role, MeetingRole)
+        assert role.name == "meeting"
+        assert "会议" in role.system_prompt
+
     def test_fallback_to_default(self):
         """测试未知角色回退到默认"""
         from src.core.llm.roles import get_role, DefaultRole
