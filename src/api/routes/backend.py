@@ -36,10 +36,13 @@ async def get_backend_info() -> BackendInfoResponse:
     except Exception as e:
         logger.warning(f"Failed to read backend.get_info(): {e}")
 
+    supports_speaker = _cap_bool(getattr(backend, "supports_speaker", False))
     capabilities = BackendCapabilities(
-        supports_speaker=_cap_bool(getattr(backend, "supports_speaker", False)),
+        supports_speaker=supports_speaker,
         supports_streaming=_cap_bool(getattr(backend, "supports_streaming", False)),
         supports_hotwords=_cap_bool(getattr(backend, "supports_hotwords", False)),
+        supports_speaker_fallback=bool(getattr(settings, "speaker_fallback_diarization_enable", False))
+        and (supports_speaker is False),
     )
 
     return BackendInfoResponse(
@@ -48,4 +51,3 @@ async def get_backend_info() -> BackendInfoResponse:
         capabilities=capabilities,
         speaker_unsupported_behavior=settings.speaker_unsupported_behavior_effective,
     )
-

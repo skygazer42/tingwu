@@ -76,6 +76,10 @@ class BackendCapabilities(BaseModel):
     supports_speaker: bool = Field(..., description="是否支持说话人识别/分离输出")
     supports_streaming: bool = Field(..., description="是否支持流式转写")
     supports_hotwords: bool = Field(..., description="是否支持热词（注入或后处理）")
+    supports_speaker_fallback: bool = Field(
+        default=False,
+        description="是否启用/可用说话人 fallback（当后端原生不支持 speaker 时，通过辅助服务生成说话人段落）",
+    )
 
 
 class BackendInfoResponse(BaseModel):
