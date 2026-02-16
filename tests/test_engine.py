@@ -1,32 +1,77 @@
+import asyncio
+import sys
+import types
+import importlib.util
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import patch, Mock, MagicMock
+
+
+def _ensure_optional_dependency_stubs_installed() -> None:
+    # These modules are imported at module-import time by the production code,
+    # but aren't needed for these unit tests (we mock the backend).
+    if "funasr" not in sys.modules and importlib.util.find_spec("funasr") is None:
+        funasr_stub = types.ModuleType("funasr")
+
+        class DummyAutoModel:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def generate(self, **kwargs):
+                return []
+
+        funasr_stub.AutoModel = DummyAutoModel
+        sys.modules["funasr"] = funasr_stub
+
+    if "numba" not in sys.modules and importlib.util.find_spec("numba") is None:
+        numba_stub = types.ModuleType("numba")
+
+        def njit(*args, **kwargs):
+            if args and callable(args[0]) and len(args) == 1 and not kwargs:
+                return args[0]
+
+            def decorator(func):
+                return func
+
+            return decorator
+
+        numba_stub.njit = njit
+        sys.modules["numba"] = numba_stub
+
+
+_ensure_optional_dependency_stubs_installed()
+
+import src.core.engine as engine_mod
+
 
 @pytest.fixture
 def mock_model_manager():
-    with patch('src.core.engine.model_manager') as mock_mm:
-        # Engine now uses model_manager.backend.transcribe(...) as the primary path.
+    with patch.object(engine_mod, "model_manager") as mock_mm:
+        # Engine uses model_manager.backend.transcribe(...) as the primary path.
         mock_backend = MagicMock()
         mock_backend.supports_speaker = True
         mock_backend.transcribe.return_value = {
             "text": "买当劳很好吃",
-            "sentence_info": [
-                {"text": "买当劳很好吃", "start": 0, "end": 1500, "spk": 0}
-            ]
+            "sentence_info": [{"text": "买当劳很好吃", "start": 0, "end": 1500, "spk": 0}],
         }
         mock_mm.backend = mock_backend
         yield mock_mm
 
+
 def test_engine_initialization(mock_model_manager):
     """测试引擎初始化"""
     from src.core.engine import TranscriptionEngine
+
     engine = TranscriptionEngine()
     assert engine is not None
     assert engine.corrector is not None
     assert engine.speaker_labeler is not None
 
+
 def test_transcribe_basic(mock_model_manager):
     """测试基本转写"""
     from src.core.engine import TranscriptionEngine
+
     engine = TranscriptionEngine()
 
     result = engine.transcribe(b"fake_audio")
@@ -35,9 +80,11 @@ def test_transcribe_basic(mock_model_manager):
     assert "text" in result
     assert "sentences" in result
 
+
 def test_transcribe_with_hotword(mock_model_manager):
     """测试带热词纠错的转写"""
     from src.core.engine import TranscriptionEngine
+
     engine = TranscriptionEngine()
     engine.update_hotwords(["麦当劳", "肯德基"])
 
@@ -46,9 +93,11 @@ def test_transcribe_with_hotword(mock_model_manager):
     # 热词纠错应该将 "买当劳" 替换为 "麦当劳"
     assert "麦当劳" in result["text"]
 
+
 def test_transcribe_with_speaker(mock_model_manager):
     """测试带说话人识别的转写"""
     from src.core.engine import TranscriptionEngine
+
     engine = TranscriptionEngine()
 
     result = engine.transcribe(b"fake_audio", with_speaker=True)
@@ -57,19 +106,23 @@ def test_transcribe_with_speaker(mock_model_manager):
     assert "speaker" in result["sentences"][0]
     assert result["sentences"][0]["speaker"] == "说话人甲"
 
+
 def test_update_hotwords(mock_model_manager):
     """测试更新热词"""
     from src.core.engine import TranscriptionEngine
+
     engine = TranscriptionEngine()
 
     engine.update_hotwords(["Claude", "Bilibili"])
 
-    assert engine._hotwords_loaded == True
+    assert engine._hotwords_loaded is True
     assert len(engine.corrector.hotwords) == 2
+
 
 def test_transcribe_generates_transcript(mock_model_manager):
     """测试生成格式化转写稿"""
     from src.core.engine import TranscriptionEngine
+
     engine = TranscriptionEngine()
 
     result = engine.transcribe(b"fake_audio", with_speaker=True)
@@ -77,9 +130,11 @@ def test_transcribe_generates_transcript(mock_model_manager):
     assert "transcript" in result
     assert "说话人甲" in result["transcript"]
 
+
 def test_transcribe_without_hotword(mock_model_manager):
     """测试禁用热词纠错"""
     from src.core.engine import TranscriptionEngine
+
     engine = TranscriptionEngine()
     engine.update_hotwords(["麦当劳"])
 
@@ -87,3 +142,57 @@ def test_transcribe_without_hotword(mock_model_manager):
 
     # 禁用热词时应该保留原文
     assert result["text"] == "买当劳很好吃"
+
+
+def test_transcribe_auto_async_routes_by_chunk_duration_threshold(mock_model_manager):
+    from src.core.engine import TranscriptionEngine
+
+    engine = TranscriptionEngine()
+    engine.transcribe_async = AsyncMock(return_value={"text": "short"})  # type: ignore[method-assign]
+    engine.transcribe_long_audio = Mock(return_value={"text": "long"})  # type: ignore[method-assign]
+
+    # 10s PCM16LE (16kHz mono, 2 bytes/sample)
+    audio_bytes = b"\x00" * (10 * 16000 * 2)
+
+    out = asyncio.run(
+        engine.transcribe_auto_async(audio_bytes, asr_options={"chunking": {"max_chunk_duration_s": 5.0}})
+    )
+
+    assert out["text"] == "long"
+    engine.transcribe_long_audio.assert_called_once()
+    engine.transcribe_async.assert_not_awaited()
+
+
+def test_transcribe_auto_async_chunking_override_can_lower_threshold(mock_model_manager):
+    from src.core.engine import TranscriptionEngine
+
+    engine = TranscriptionEngine()
+    engine.transcribe_async = AsyncMock(return_value={"text": "short"})  # type: ignore[method-assign]
+    engine.transcribe_long_audio = Mock(return_value={"text": "long"})  # type: ignore[method-assign]
+
+    # 2s PCM16LE
+    audio_bytes = b"\x00" * (2 * 16000 * 2)
+
+    # Global threshold is high, but request explicitly sets max_chunk_duration_s small.
+    out = asyncio.run(engine.transcribe_auto_async(audio_bytes, asr_options={"chunking": {"max_chunk_duration_s": 1}}))
+
+    assert out["text"] == "long"
+    engine.transcribe_long_audio.assert_called_once()
+    engine.transcribe_async.assert_not_awaited()
+
+
+def test_transcribe_auto_async_with_speaker_skips_chunking(mock_model_manager):
+    from src.core.engine import TranscriptionEngine
+
+    engine = TranscriptionEngine()
+    engine.transcribe_async = AsyncMock(return_value={"text": "direct"})  # type: ignore[method-assign]
+    engine.transcribe_long_audio = Mock(return_value={"text": "chunked"})  # type: ignore[method-assign]
+
+    # 120s PCM16LE
+    audio_bytes = b"\x00" * (120 * 16000 * 2)
+
+    out = asyncio.run(engine.transcribe_auto_async(audio_bytes, with_speaker=True))
+
+    assert out["text"] == "direct"
+    engine.transcribe_async.assert_awaited_once()
+    engine.transcribe_long_audio.assert_not_called()
