@@ -11,6 +11,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, List
 from dataclasses import dataclass
+import re
 
 from .chinese_itn import ChineseITN
 from .zh_convert import ZhConverter
@@ -35,6 +36,12 @@ class PostProcessorSettings:
 
     # 中英文间距
     spacing_cjk_ascii_enable: bool = False
+
+    # 口述标点指令（dictation）
+    spoken_punc_enable: bool = False
+
+    # 英文缩写合并：A I -> AI, V S Code -> VS Code
+    acronym_merge_enable: bool = False
 
     # 繁简转换
     zh_convert_enable: bool = False
@@ -87,6 +94,8 @@ class TextPostProcessor:
             settings = PostProcessorSettings()
 
         self.settings = settings
+        self._spoken_punc_enable = bool(getattr(settings, "spoken_punc_enable", False))
+        self._acronym_merge_enable = bool(getattr(settings, "acronym_merge_enable", False))
 
         # 按需初始化各组件
         self.filler_remover = (
@@ -118,6 +127,66 @@ class TextPostProcessor:
         self.punc_merge_enable = settings.punc_merge_enable
         self.trash_punc_enable = settings.trash_punc_enable
         self.trash_punc_chars = settings.trash_punc_chars
+
+        # Compiled regex for acronym merging.
+        self._acronym_seq_re = re.compile(r'(?<![A-Za-z])(?:[A-Za-z]\s+){1,}[A-Za-z](?![A-Za-z])')
+
+        # Dictation spoken punctuation commands (conservative: only applied at start/end).
+        self._spoken_punc_map = {
+            "逗号": "，",
+            "句号": "。",
+            "问号": "？",
+            "感叹号": "！",
+            "回车": "\n",
+            "换行": "\n",
+        }
+        # Stable iteration order for peeling commands from boundaries.
+        self._spoken_punc_cmds = list(self._spoken_punc_map.keys())
+
+    def _apply_spoken_punctuation_commands(self, text: str) -> str:
+        if not self._spoken_punc_enable or not text:
+            return text
+
+        out = text
+
+        # Peel prefix commands (allow spaces/tabs around commands).
+        prefix = ""
+        while True:
+            s = out.lstrip(" \t")
+            matched = None
+            for cmd in self._spoken_punc_cmds:
+                if s.startswith(cmd):
+                    matched = cmd
+                    break
+            if matched is None:
+                break
+            prefix += self._spoken_punc_map.get(matched, matched)
+            out = s[len(matched) :]
+
+        # Peel suffix commands (allow spaces/tabs around commands).
+        suffix = ""
+        while True:
+            s = out.rstrip(" \t")
+            matched = None
+            for cmd in self._spoken_punc_cmds:
+                if s.endswith(cmd):
+                    matched = cmd
+                    break
+            if matched is None:
+                break
+            suffix = self._spoken_punc_map.get(matched, matched) + suffix
+            out = s[: -len(matched)]
+
+        return prefix + out + suffix
+
+    def _merge_english_acronyms(self, text: str) -> str:
+        if not self._acronym_merge_enable or not text:
+            return text
+
+        def _repl(m: re.Match) -> str:
+            return re.sub(r"\s+", "", m.group(0))
+
+        return self._acronym_seq_re.sub(_repl, text)
 
     @property
     def punc_restorer(self):
@@ -164,6 +233,9 @@ class TextPostProcessor:
         if self.fullwidth_normalizer:
             text = self.fullwidth_normalizer.normalize(text)
 
+        # 2.5 口述标点指令（可选，dictation 场景）
+        text = self._apply_spoken_punctuation_commands(text)
+
         # 3. 标点恢复 (在 ITN 之前，确保数字转换正确)
         if self._punc_restore_enable and self.punc_restorer:
             text = self.punc_restorer.restore(text)
@@ -171,6 +243,9 @@ class TextPostProcessor:
         # 4. 中文数字格式化
         if self.itn:
             text = self.itn.convert(text)
+
+        # 4.5 英文缩写合并（在 spacing 之前）
+        text = self._merge_english_acronyms(text)
 
         # 5. 中英文间距
         if self.spacing_processor:
@@ -249,6 +324,8 @@ class TextPostProcessor:
             itn_enable=getattr(config, 'itn_enable', True),
             itn_erhua_remove=getattr(config, 'itn_erhua_remove', False),
             spacing_cjk_ascii_enable=getattr(config, 'spacing_cjk_ascii_enable', False),
+            spoken_punc_enable=getattr(config, 'spoken_punc_enable', False),
+            acronym_merge_enable=getattr(config, 'acronym_merge_enable', False),
             zh_convert_enable=getattr(config, 'zh_convert_enable', False),
             zh_convert_locale=getattr(config, 'zh_convert_locale', 'zh-hans'),
             punc_convert_enable=getattr(config, 'punc_convert_enable', False),

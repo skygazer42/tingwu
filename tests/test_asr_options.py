@@ -39,3 +39,10 @@ def test_asr_options_chunking_boundary_reconcile_keys_allowed():
 def test_asr_options_chunking_boundary_reconcile_window_must_be_non_negative():
     with pytest.raises(ValueError, match="boundary_reconcile_window_s"):
         parse_asr_options('{"chunking":{"boundary_reconcile_enable":true,"boundary_reconcile_window_s":-0.1}}')
+
+
+def test_asr_options_postprocess_spoken_punc_and_acronym_keys_allowed():
+    opts = parse_asr_options('{"postprocess":{"spoken_punc_enable":true,"acronym_merge_enable":true}}')
+    assert opts is not None
+    assert opts["postprocess"]["spoken_punc_enable"] is True
+    assert opts["postprocess"]["acronym_merge_enable"] is True
