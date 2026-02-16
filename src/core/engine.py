@@ -4,8 +4,10 @@ import logging
 import time
 from typing import Dict, Any, Optional, Union, List, Tuple, Callable
 from pathlib import Path
+import json
 
 import numpy as np
+import httpx
 
 from src.config import settings
 from src.models.model_manager import model_manager
@@ -18,6 +20,8 @@ from src.core.llm.roles import get_role
 from src.core.text_processor import TextPostProcessor, PostProcessorSettings
 from src.core.text_processor.text_corrector import TextCorrector
 from src.core.audio.chunker import AudioChunker
+from src.core.audio.slice import ensure_pcm16le_16k_mono_bytes, slice_pcm16le
+from src.models.backends.remote_utils import pcm16le_to_wav_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -1007,6 +1011,34 @@ class TranscriptionEngine:
 
         raw_result = None
 
+        # ------------------------------------------------------------
+        # Speaker fallback diarization (best-effort)
+        # ------------------------------------------------------------
+        if with_speaker and not backend.supports_speaker:
+            if bool(getattr(settings, "speaker_fallback_diarization_enable", False)) and str(
+                getattr(settings, "speaker_fallback_diarization_base_url", "")
+            ).strip():
+                try:
+                    speaker_options = self._get_request_speaker_options(asr_options)
+                    out = await self._transcribe_with_speaker_fallback_diarization(
+                        audio_input,
+                        backend=backend,
+                        injection_hotwords=injection_hotwords,
+                        post_processor=post_processor,
+                        effective_backend_kwargs=effective_backend_kwargs,
+                        speaker_options=speaker_options,
+                        apply_hotword=apply_hotword,
+                        apply_llm=apply_llm,
+                        llm_role=llm_role,
+                    )
+                    if out is not None:
+                        return out
+                except Exception as e:
+                    backend_name = backend.get_info().get("name", "unknown")
+                    logger.warning(
+                        f"Speaker fallback diarization failed for backend {backend_name} (ignored): {e}"
+                    )
+
         # 检查说话人识别支持（按配置决定：报错 / 回退 / 忽略）
         if with_speaker and not backend.supports_speaker:
             behavior = settings.speaker_unsupported_behavior_effective
@@ -1146,6 +1178,219 @@ class TranscriptionEngine:
 
         return result
 
+    async def _transcribe_with_speaker_fallback_diarization(
+        self,
+        audio_input: Union[bytes, str, Path],
+        *,
+        backend,
+        injection_hotwords: Optional[str],
+        post_processor: TextPostProcessor,
+        effective_backend_kwargs: Dict[str, Any],
+        speaker_options: Dict[str, Any],
+        apply_hotword: bool,
+        apply_llm: bool,
+        llm_role: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Best-effort speaker diarization fallback for non-diarizing backends.
+
+        Returns:
+            A TingWu-style result dict with speaker fields when successful, otherwise None.
+        """
+        base_url = str(getattr(settings, "speaker_fallback_diarization_base_url", "") or "").rstrip("/")
+        if not base_url:
+            return None
+
+        timeout_s = float(getattr(settings, "speaker_fallback_diarization_timeout_s", 30.0) or 30.0)
+        max_turn_duration_s = float(getattr(settings, "speaker_fallback_max_turn_duration_s", 25.0) or 0.0)
+        max_turns = int(getattr(settings, "speaker_fallback_max_turns", 200) or 0)
+
+        # Normalize audio into PCM16LE for slicing and WAV for HTTP upload.
+        pcm16le = ensure_pcm16le_16k_mono_bytes(audio_input)
+        if not pcm16le:
+            return None
+        wav_bytes = pcm16le_to_wav_bytes(pcm16le, sample_rate=16000, channels=1, sampwidth=2)
+
+        # Request diarization from the helper TingWu service (usually tingwu-pytorch).
+        diar_asr_options: Dict[str, Any] = {}
+        label_style = speaker_options.get("label_style")
+        if isinstance(label_style, str) and label_style.strip().lower() in ("zh", "numeric"):
+            diar_asr_options["speaker"] = {"label_style": str(label_style).strip().lower()}
+
+        data = {
+            "with_speaker": "true",
+            "apply_hotword": "false",
+            "apply_llm": "false",
+            "llm_role": "default",
+        }
+        if diar_asr_options:
+            data["asr_options"] = json.dumps(diar_asr_options, ensure_ascii=False)
+
+        files = {"file": ("audio.wav", wav_bytes, "audio/wav")}
+        async with httpx.AsyncClient(timeout=timeout_s) as client:
+            resp = await client.post(f"{base_url}/api/v1/transcribe", data=data, files=files)
+            resp.raise_for_status()
+            obj = resp.json()
+
+        if not isinstance(obj, dict):
+            return None
+        diar_sentences = obj.get("sentences") or []
+        if not isinstance(diar_sentences, list) or not diar_sentences:
+            return None
+
+        # Build segments to transcribe: either merged turns or 1:1 sentences.
+        turn_merge_enable = bool(speaker_options.get("turn_merge_enable", True))
+        if turn_merge_enable:
+            segments = build_speaker_turns(
+                diar_sentences,
+                gap_ms=int(speaker_options.get("turn_merge_gap_ms", settings.speaker_turn_merge_gap_ms)),
+                min_chars=0,  # rely on duration + max_turns; diar text is irrelevant for primary ASR
+            )
+        else:
+            segments = []
+            for s in diar_sentences:
+                segments.append(
+                    {
+                        "speaker": s.get("speaker"),
+                        "speaker_id": s.get("speaker_id"),
+                        "start": s.get("start", 0),
+                        "end": s.get("end", 0),
+                        "text": "",
+                        "sentence_count": 1,
+                    }
+                )
+
+        # Normalize/validate segments and apply max duration splitting.
+        max_turn_duration_ms = int(max_turn_duration_s * 1000) if max_turn_duration_s > 0 else 0
+        normalized: List[Dict[str, Any]] = []
+        for seg in segments:
+            try:
+                start_ms = int(seg.get("start", 0) or 0)
+            except (TypeError, ValueError):
+                start_ms = 0
+            try:
+                end_ms = int(seg.get("end", start_ms) or start_ms)
+            except (TypeError, ValueError):
+                end_ms = start_ms
+            if end_ms < start_ms:
+                end_ms = start_ms
+
+            if max_turn_duration_ms > 0 and (end_ms - start_ms) > max_turn_duration_ms:
+                cursor = start_ms
+                while cursor < end_ms:
+                    sub_end = min(cursor + max_turn_duration_ms, end_ms)
+                    normalized.append(
+                        {
+                            "speaker": seg.get("speaker"),
+                            "speaker_id": seg.get("speaker_id"),
+                            "start": cursor,
+                            "end": sub_end,
+                            "text": "",
+                            "sentence_count": 1,
+                        }
+                    )
+                    cursor = sub_end
+            else:
+                normalized.append(
+                    {
+                        "speaker": seg.get("speaker"),
+                        "speaker_id": seg.get("speaker_id"),
+                        "start": start_ms,
+                        "end": end_ms,
+                        "text": "",
+                        "sentence_count": int(seg.get("sentence_count", 1) or 1),
+                    }
+                )
+
+        # Enforce max turns (post-split).
+        if max_turns > 0 and len(normalized) > max_turns:
+            return None
+
+        speaker_labeler = SpeakerLabeler(label_style=str(speaker_options.get("label_style", "zh")))
+
+        out_sentences: List[Dict[str, Any]] = []
+        for seg in normalized:
+            start_ms = int(seg.get("start", 0) or 0)
+            end_ms = int(seg.get("end", start_ms) or start_ms)
+            pcm_slice = slice_pcm16le(pcm16le, start_ms=start_ms, end_ms=end_ms)
+            if not pcm_slice:
+                continue
+
+            raw = backend.transcribe(
+                pcm_slice,
+                hotwords=injection_hotwords,
+                with_speaker=False,
+                **effective_backend_kwargs,
+            )
+            seg_text = str((raw or {}).get("text", "") or "")
+
+            # Apply hotword/rules/postprocess corrections on per-segment text.
+            all_similars: List[Tuple[str, str, float]] = []
+            if apply_hotword:
+                seg_text, similars = self._apply_corrections(seg_text, post_processor=post_processor)
+                all_similars.extend(similars)
+
+            speaker = seg.get("speaker")
+            speaker_id = seg.get("speaker_id")
+            try:
+                speaker_id_int = int(speaker_id)
+            except (TypeError, ValueError):
+                speaker_id_int = -1
+
+            speaker_str = str(speaker).strip() if isinstance(speaker, str) else ""
+            if not speaker_str and speaker_id_int >= 0:
+                speaker_str = speaker_labeler._get_speaker_label(speaker_id_int)
+            if not speaker_str:
+                speaker_str = "未知"
+
+            out_sentences.append(
+                {
+                    "text": seg_text,
+                    "start": start_ms,
+                    "end": end_ms,
+                    "speaker": speaker_str,
+                    "speaker_id": speaker_id_int,
+                }
+            )
+
+        if not out_sentences:
+            return None
+
+        # Full text (no speaker labels) stays consistent with existing API semantics.
+        text = "".join([s.get("text", "") for s in out_sentences])
+        if apply_llm:
+            if settings.llm_fulltext_enable:
+                text = await self._apply_llm_fulltext_polish(
+                    text,
+                    max_chars=settings.llm_fulltext_max_chars,
+                    similarity_candidates=[],
+                )
+            else:
+                text = await self._apply_llm_polish(text, role=llm_role, similarity_candidates=[])
+
+        speaker_turns = [
+            {
+                "speaker": s["speaker"],
+                "speaker_id": s["speaker_id"],
+                "start": s["start"],
+                "end": s["end"],
+                "text": s["text"],
+                "sentence_count": 1,
+            }
+            for s in out_sentences
+        ]
+
+        transcript_source = speaker_turns or out_sentences
+        transcript = speaker_labeler.format_transcript(transcript_source, include_timestamp=True)
+
+        return {
+            "text": text,
+            "text_accu": None,
+            "sentences": out_sentences,
+            "speaker_turns": speaker_turns,
+            "transcript": transcript,
+            "raw_text": text,
+        }
+
     async def transcribe_auto_async(
         self,
         audio_input: Union[bytes, str, Path],
@@ -1166,7 +1411,13 @@ class TranscriptionEngine:
         # routing still benefits from chunking.
         backend = model_manager.backend
         if with_speaker and not backend.supports_speaker:
-            if settings.speaker_unsupported_behavior_effective == "ignore":
+            # If speaker fallback is enabled, keep with_speaker=true so `transcribe_async`
+            # can attempt best-effort diarization via the helper service.
+            if bool(getattr(settings, "speaker_fallback_diarization_enable", False)) and str(
+                getattr(settings, "speaker_fallback_diarization_base_url", "")
+            ).strip():
+                pass
+            elif settings.speaker_unsupported_behavior_effective == "ignore":
                 backend_name = backend.get_info().get("name", "unknown")
                 logger.warning(
                     f"Backend {backend_name} does not support speaker diarization; "
