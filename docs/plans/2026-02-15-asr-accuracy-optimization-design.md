@@ -3,7 +3,7 @@
 **Date:** 2026-02-15  
 **Owner:** Codex (with user approval)  
 **Scope:** TingWu (`/Users/luke/code/tingwu`)  
-**Reference project:** CapsWriter-Offline (`/Users/luke/code/CapsWriter-Offline`)
+**Reference projects:** CapsWriter-Offline (`/Users/luke/code/CapsWriter-Offline`), FunASR_API, SenseVoiceApi
 
 ## Goal
 
@@ -53,7 +53,7 @@ We will re-implement behaviors (not copy code verbatim), and validate with tests
 Start with a deterministic pipeline “foundation” that raises final text accuracy without changing model weights:
 
 1) Decode → preprocess → ASR → (if long) chunk + robust merge → correction pipeline → final output
-2) Introduce accuracy-oriented switches (e.g. `accuracy_mode=accurate`) later, but keep initial integration safe and testable.
+2) Introduce accuracy-oriented presets via per-request `asr_options`, but keep defaults safe and testable.
 
 ## Proposed pipeline (file transcription)
 
@@ -108,14 +108,14 @@ Hotwords:
 05. Route long audio to chunking automatically in HTTP API
 
 ### Phase 2 — Audio preprocessing (accuracy-first)
-06. Add `accuracy_mode=accurate` toggles for heavier preprocessing
+06. Add “accuracy-first” presets via `asr_options` for heavier preprocessing
 07. Remove DC offset + add optional high-pass filtering
 08. Add optional band-pass filtering + soft limiting (clipping mitigation)
 09. Improve loudness normalization strategy (robust to very quiet/loud inputs)
 10. Upgrade denoise gating (only enable when SNR low; fallback strategy)
 
 ### Phase 3 — Better segmentation & boundaries
-11. Upgrade chunk split point selection (more VAD-like, fewer mid-word cuts)
+11. Add time-based chunking strategy (CapsWriter-style fixed segments + overlap)
 12. Boundary re-decode/overlap reconciliation (reduce missing/duplicated boundary tokens)
 13. Merge sentence timestamps more robustly (reduce duplicate sentence artifacts)
 14. Output per-chunk diagnostics for quality triage

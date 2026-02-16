@@ -24,6 +24,9 @@ These items are already done in the current workspace:
 - Audio diagnostics now include `dc_offset` + `clipping_ratio` (`src/core/audio/preprocessor.py`) + tests (`tests/test_audio_diagnostics.py`)
 - Preprocessing now removes DC offset by default (`src/core/audio/preprocessor.py`) + tests (`tests/test_audio_preprocess_dc_offset.py`)
 - ONNX + GGUF backends now accept TingWu-standard raw PCM16LE bytes (fixes HTTP/chunking compatibility) (`src/models/backends/onnx.py`, `src/models/backends/gguf/backend.py`)
+- Per-request tuning (`asr_options`) is supported + allowlisted (`src/api/asr_options.py`) and plumbed through API → engine → backend
+- Multi-model per-port container deployment with on-demand profiles (`docker-compose.models.yml`, `scripts/start.sh`)
+- Qwen3-ASR default model is `Qwen/Qwen3-ASR-1.7B` (compose + scripts + Settings)
 
 If you want a clean branch/worktree flow + commits per task, run this plan in a worktree.
 
@@ -84,28 +87,29 @@ If you want a clean branch/worktree flow + commits per task, run this plan in a 
 1. Add a setting with clear semantics (seconds).
 2. Route based on that setting, not VAD segment time.
 
-### Task 05: Add `accuracy_mode` request flag (accuracy > speed)
+### Task 05: Add time-based chunking strategy (CapsWriter-style)
 
 **Files:**
-- Modify: `src/api/routes/transcribe.py` (add form field)
-- Modify: `src/core/engine.py` (route options to preprocessing)
-- Modify: `src/api/dependencies.py` (preprocessor config selection)
-- Test: `tests/test_api_http.py`
+- Modify: `src/core/audio/chunker.py`
+- Modify: `src/core/engine.py` (`_get_request_chunker`, `transcribe_long_audio`)
+- Modify: `src/api/asr_options.py` (allowlist + validation)
+- Test: `tests/test_audio_chunker_split.py` (add time-splitting cases)
 
 **Steps:**
-1. Test: request with `accuracy_mode=accurate` hits heavier pipeline.
-2. Implement as a small enum: `fast|balanced|accurate`.
+1. Add `asr_options.chunking.strategy` with allowlisted values: `silence|time`.
+2. Implement `time` strategy: fixed chunk duration + overlap (no silence/VAD required).
+3. Verify time strategy never stalls (always advances) and respects min/max constraints.
 
-### Task 06: DC offset removal + optional high-pass filter
+### Task 06: Optional high-pass filter (reduce rumble / improve VAD + ASR)
 
 **Files:**
 - Modify: `src/core/audio/preprocessor.py`
 - Test: add new unit tests under `tests/`
 
 **Steps:**
-1. Write test: DC offset removed (mean close to 0).
-2. Implement `remove_dc_offset(audio)`.
-3. Add simple high-pass (single-pole IIR) as optional step (accurate mode only).
+1. Write test: a low-frequency sine is attenuated after high-pass.
+2. Implement simple single-pole high-pass (numpy-only) behind `asr_options.preprocess`.
+3. Keep default behavior unchanged unless explicitly enabled.
 
 ### Task 07: Clipping mitigation (soft limiting)
 
@@ -115,7 +119,7 @@ If you want a clean branch/worktree flow + commits per task, run this plan in a 
 
 **Steps:**
 1. Test: severely clipped input returns reduced clipping ratio.
-2. Implement soft limiter (tanh or smooth knee) behind `accuracy_mode`.
+2. Implement soft limiter (tanh or smooth knee) behind `asr_options.preprocess`.
 
 ### Task 08: Loudness normalization improvements
 
@@ -124,7 +128,7 @@ If you want a clean branch/worktree flow + commits per task, run this plan in a 
 
 **Steps:**
 1. Add a “robust RMS” (exclude top/bottom percentile) for very noisy audio.
-2. Avoid over-boosting noise (cap gain lower in accurate mode).
+2. Avoid over-boosting noise (cap gain; keep defaults conservative).
 
 ### Task 09: Denoise gating improvements
 
@@ -156,7 +160,7 @@ If you want a clean branch/worktree flow + commits per task, run this plan in a 
 
 **Steps:**
 1. Add a mode that re-decodes a small boundary window (e.g. last/first 1–2s) and uses merge-by-text to reconcile.
-2. Only enable in `accuracy_mode=accurate`.
+2. Only enable when explicitly requested (e.g. `asr_options.chunking.boundary_reconcile=true`).
 
 ### Task 12: Make post-processing “merge-safe”
 
@@ -247,7 +251,7 @@ If you want a clean branch/worktree flow + commits per task, run this plan in a 
 
 If we focus purely on “accuracy of final text” for long audio, the best next slice is:
 
-1) Task 02 (sentence overlap de-dup)  
-2) Task 03 (audio diagnostics)  
-3) Task 10 (better split point selection)  
-4) Task 11 (boundary reconciliation in accurate mode)
+1) Task 05 (time-based chunking strategy)  
+2) Task 10 (better split point selection)  
+3) Task 11 (boundary reconciliation)  
+4) Task 12 (post-processing merge-safe regressions)
