@@ -20,6 +20,8 @@ export default function TranscribePage() {
     files,
     options,
     tempHotwords,
+    advancedAsrOptionsText,
+    advancedAsrOptionsError,
     result,
     setResult,
     isTranscribing,
@@ -39,6 +41,11 @@ export default function TranscribePage() {
       return
     }
 
+    if (advancedAsrOptionsError) {
+      toast.error(`高级 asr_options JSON 无效：${advancedAsrOptionsError}`)
+      return
+    }
+
     setTranscribing(true)
     setResult(null)
 
@@ -46,6 +53,7 @@ export default function TranscribePage() {
       const transcribeOptions = {
         ...options,
         hotwords: tempHotwords || undefined,
+        asrOptionsText: advancedAsrOptionsText.trim() ? advancedAsrOptionsText : undefined,
       }
 
       if (files.length === 1) {
@@ -102,7 +110,11 @@ export default function TranscribePage() {
       }
     } catch (error) {
       console.error('Transcription error:', error)
-      toast.error('转写请求失败，请检查服务连接')
+      if (error instanceof Error && error.message.includes('asr_options')) {
+        toast.error(error.message)
+      } else {
+        toast.error('转写请求失败，请检查服务连接')
+      }
     } finally {
       setTranscribing(false)
     }

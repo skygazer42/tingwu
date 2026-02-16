@@ -15,6 +15,38 @@ export interface UploadProgressCallback {
 export interface TranscribeWithProgressOptions extends TranscribeOptions {
   onUploadProgress?: UploadProgressCallback
   signal?: AbortSignal
+  /**
+   * Advanced per-request ASR tuning options (`asr_options`) as a JSON string.
+   * This is merged with UI-derived options like speaker label style.
+   */
+  asrOptionsText?: string
+}
+
+function parseAsrOptionsText(text: string | undefined): Record<string, unknown> {
+  const s = (text || '').trim()
+  if (!s) {
+    return {}
+  }
+
+  const obj: unknown = JSON.parse(s)
+  if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
+    throw new Error('高级 asr_options 必须是 JSON 对象')
+  }
+  return obj as Record<string, unknown>
+}
+
+function mergeSpeakerLabelStyle(
+  base: Record<string, unknown>,
+  labelStyle: 'numeric' | 'zh'
+): Record<string, unknown> {
+  const existing = base.speaker
+  const speakerSection: Record<string, unknown> =
+    existing && typeof existing === 'object' && !Array.isArray(existing)
+      ? { ...(existing as Record<string, unknown>) }
+      : {}
+
+  speakerSection.label_style = labelStyle
+  return { ...base, speaker: speakerSection }
 }
 
 /**
@@ -24,7 +56,7 @@ export async function transcribeAudio(
   file: File,
   options: TranscribeWithProgressOptions = {}
 ): Promise<TranscribeResponse> {
-  const { onUploadProgress, signal, ...transcribeOptions } = options
+  const { onUploadProgress, signal, asrOptionsText, ...transcribeOptions } = options
   const formData = new FormData()
   formData.append('file', file)
 
@@ -44,12 +76,10 @@ export async function transcribeAudio(
     formData.append('hotwords', transcribeOptions.hotwords)
   }
 
-  // Per-request ASR tuning (backend supports allowlisted options).
-  const asrOptions: Record<string, unknown> = {}
+  // Per-request ASR tuning (backend validates allowlisted options).
+  let asrOptions: Record<string, unknown> = parseAsrOptionsText(asrOptionsText)
   if (transcribeOptions.with_speaker) {
-    asrOptions.speaker = {
-      label_style: transcribeOptions.speaker_label_style || 'numeric',
-    }
+    asrOptions = mergeSpeakerLabelStyle(asrOptions, transcribeOptions.speaker_label_style || 'numeric')
   }
   if (Object.keys(asrOptions).length > 0) {
     formData.append('asr_options', JSON.stringify(asrOptions))
@@ -82,7 +112,7 @@ export async function transcribeBatch(
   files: File[],
   options: TranscribeWithProgressOptions & { max_concurrent?: number } = {}
 ): Promise<BatchTranscribeResponse> {
-  const { onUploadProgress, signal, ...transcribeOptions } = options
+  const { onUploadProgress, signal, asrOptionsText, ...transcribeOptions } = options
   const formData = new FormData()
 
   files.forEach((file) => {
@@ -108,11 +138,9 @@ export async function transcribeBatch(
     formData.append('max_concurrent', String(transcribeOptions.max_concurrent))
   }
 
-  const asrOptions: Record<string, unknown> = {}
+  let asrOptions: Record<string, unknown> = parseAsrOptionsText(asrOptionsText)
   if (transcribeOptions.with_speaker) {
-    asrOptions.speaker = {
-      label_style: transcribeOptions.speaker_label_style || 'numeric',
-    }
+    asrOptions = mergeSpeakerLabelStyle(asrOptions, transcribeOptions.speaker_label_style || 'numeric')
   }
   if (Object.keys(asrOptions).length > 0) {
     formData.append('asr_options', JSON.stringify(asrOptions))
@@ -187,7 +215,7 @@ export async function transcribeVideo(
   file: File,
   options: TranscribeWithProgressOptions = {}
 ): Promise<VideoTranscribeResponse> {
-  const { onUploadProgress, signal, ...transcribeOptions } = options
+  const { onUploadProgress, signal, asrOptionsText, ...transcribeOptions } = options
   const formData = new FormData()
   formData.append('file', file)
 
@@ -207,11 +235,9 @@ export async function transcribeVideo(
     formData.append('hotwords', transcribeOptions.hotwords)
   }
 
-  const asrOptions: Record<string, unknown> = {}
+  let asrOptions: Record<string, unknown> = parseAsrOptionsText(asrOptionsText)
   if (transcribeOptions.with_speaker) {
-    asrOptions.speaker = {
-      label_style: transcribeOptions.speaker_label_style || 'numeric',
-    }
+    asrOptions = mergeSpeakerLabelStyle(asrOptions, transcribeOptions.speaker_label_style || 'numeric')
   }
   if (Object.keys(asrOptions).length > 0) {
     formData.append('asr_options', JSON.stringify(asrOptions))
