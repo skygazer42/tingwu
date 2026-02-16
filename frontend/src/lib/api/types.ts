@@ -100,6 +100,7 @@ export interface BackendCapabilities {
   supports_speaker: boolean
   supports_streaming: boolean
   supports_hotwords: boolean
+  supports_speaker_fallback?: boolean
 }
 
 export interface BackendInfoResponse {
