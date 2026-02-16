@@ -145,6 +145,8 @@ class Settings(BaseSettings):
     itn_enable: bool = True                    # 中文数字格式化 (如 "三百五十" → "350")
     itn_erhua_remove: bool = False             # 儿化移除 (如 "那边儿" → "那边")
     spacing_cjk_ascii_enable: bool = False     # 中英文间距 (如 "AI技术" → "AI 技术")
+    spoken_punc_enable: bool = False           # 口述标点指令 (如 "逗号/句号/换行")
+    acronym_merge_enable: bool = False         # 英文缩写合并 (如 "A I" → "AI")
     zh_convert_enable: bool = False            # 繁简转换
     zh_convert_locale: str = "zh-hans"         # 目标区域: zh-hans/zh-hant/zh-tw/zh-hk
     punc_convert_enable: bool = False          # 标点转换 (全角→半角)
