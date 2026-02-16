@@ -47,6 +47,20 @@ class Settings(BaseSettings):
     sensevoice_model: str = "iic/SenseVoiceSmall"
     sensevoice_language: str = "zh"
 
+    # ------------------------------------------------------------
+    # Speaker / 会议转写输出配置
+    # ------------------------------------------------------------
+    # 说话人标签风格: zh=说话人甲/乙/丙, numeric=说话人1/2/3
+    speaker_label_style: Literal["zh", "numeric"] = "zh"
+    # 合并同一说话人的连续句子为“turn/段落”
+    speaker_turn_merge_enable: bool = True
+    # 两句之间间隔小于该值 (ms) 则合并为同一 turn
+    speaker_turn_merge_gap_ms: int = 800
+    # turn 最少字符数（避免生成特别短的碎片段落）
+    speaker_turn_merge_min_chars: int = 1
+    # 后端不支持说话人识别时是否严格报错（避免静默回退到其它模型）
+    speaker_strict_backend: bool = True
+
     # GGUF 后端配置 (FunASR-Nano-GGUF)
     gguf_encoder_path: str = "models/Fun-ASR-Nano-Encoder-Adaptor.fp32.onnx"
     gguf_ctc_path: str = "models/Fun-ASR-Nano-CTC.int8.onnx"
