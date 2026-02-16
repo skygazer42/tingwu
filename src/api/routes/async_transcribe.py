@@ -156,6 +156,7 @@ def _handle_url_transcribe(payload: dict) -> dict:
 
         return {
             "text": result.get("text", ""),
+            "text_accu": result.get("text_accu"),
             "sentences": sentences,
             "raw_text": result.get("raw_text", "")
         }
@@ -389,6 +390,7 @@ async def transcribe_video(
         return {
             "code": 0,
             "text": result.get("text", ""),
+            "text_accu": result.get("text_accu"),
             "sentences": result.get("sentences", []),
             "transcript": result.get("transcript"),
             "raw_text": result.get("raw_text")

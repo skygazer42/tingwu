@@ -101,6 +101,8 @@ docker compose -f docker-compose.models.yml down
 - `backend`：模型后端参数（不同后端支持的参数不同）
 - `postprocess`：文本后处理（ITN/标点/spacing 等）
 
+返回中会额外包含一个可选字段 `text_accu`：基于时间窗口对齐的“精确拼接文本”（长音频 chunk overlap 去重更严格），更适合回忆/会议转录的最终稿输出。
+
 示例：强制更小的 chunk + 更激进的合并窗口（更偏准确率，慢一点）
 
 ```bash
@@ -345,6 +347,10 @@ curl -X POST http://localhost:8000/api/v1/hotwords/append \
   -d '{"hotwords": ["新热词1", "新热词2"]}'
 ```
 
+说明：
+- `POST /api/v1/hotwords` 管理的是 **强制纠错热词**（`data/hotwords/hotwords.txt`），会参与音素纠错/规则替换。
+- 回忆/会议转录更推荐维护 **上下文热词**（`data/hotwords/hotwords-context.txt`）：只用于“注入提示模型”，不会强制替换，风险更低（支持热加载）。
+
 ### 配置管理
 
 ```bash
@@ -395,7 +401,11 @@ curl -X POST http://localhost:8000/config/reload
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
+| HOTWORDS_FILE | 强制纠错热词文件 | hotwords.txt |
+| HOTWORDS_CONTEXT_FILE | 上下文提示热词文件（仅注入） | hotwords-context.txt |
 | HOTWORDS_THRESHOLD | 热词匹配阈值 | 0.85 |
+| HOTWORD_INJECTION_ENABLE | 启用热词前向注入 | true |
+| HOTWORD_INJECTION_MAX | 最大注入热词数 | 50 |
 | HOTWORD_USE_FAISS | 启用 FAISS 索引 | false |
 | HOTWORD_FAISS_INDEX_TYPE | FAISS 索引类型 | IVFFlat |
 

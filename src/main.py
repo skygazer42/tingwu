@@ -44,9 +44,14 @@ async def lifespan(app: FastAPI):
         setup_hotword_watcher(
             watch_dir=str(settings.hotwords_dir),
             on_hotwords_change=lambda path: transcription_engine.load_hotwords(path),
+            on_context_hotwords_change=lambda path: transcription_engine.load_context_hotwords(path),
             on_rules_change=lambda path: transcription_engine.load_rules(path),
             on_rectify_change=lambda path: transcription_engine.load_rectify_history(path),
             debounce_delay=settings.hotword_watch_debounce,
+            hotwords_filename=settings.hotwords_file,
+            context_hotwords_filename=settings.hotwords_context_file,
+            rules_filename="hot-rules.txt",
+            rectify_filename="hot-rectify.txt",
         )
 
     # 启动异步任务管理器

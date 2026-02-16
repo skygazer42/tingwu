@@ -53,9 +53,13 @@ class TranscriptionEngine:
         # LLM 组件
         self._llm_client: Optional[LLMClient] = None
         self._prompt_builder: Optional[PromptBuilder] = None
+        # Forced hotwords (强制替换/纠错)：用于 PhonemeCorrector + rules 等纠错链路。
         self._hotwords_list: List[str] = []
+        # Context hotwords (上下文提示)：仅用于前向注入/提示模型，不做强制替换。
+        self._context_hotwords_list: List[str] = []
 
         self._hotwords_loaded = False
+        self._context_hotwords_loaded = False
         self._rules_loaded = False
         self._rectify_loaded = False
 
@@ -161,6 +165,24 @@ class TranscriptionEngine:
         else:
             logger.warning(f"Hotwords file not found: {path}")
 
+    def load_context_hotwords(self, path: Optional[str] = None) -> None:
+        """加载上下文热词（仅用于注入提示，不强制替换）"""
+        if path is None:
+            path = str(settings.hotwords_dir / settings.hotwords_context_file)
+
+        p = Path(path)
+        if p.exists():
+            with p.open("r", encoding="utf-8") as f:
+                self._context_hotwords_list = [
+                    line.strip()
+                    for line in f
+                    if line.strip() and not line.startswith("#")
+                ]
+            logger.info(f"Loaded {len(self._context_hotwords_list)} context hotwords from {path}")
+            self._context_hotwords_loaded = True
+        else:
+            logger.warning(f"Context hotwords file not found: {path}")
+
     def load_rules(self, path: Optional[str] = None):
         """加载规则"""
         if path is None:
@@ -189,6 +211,7 @@ class TranscriptionEngine:
     def load_all(self):
         """加载所有热词相关文件"""
         self.load_hotwords()
+        self.load_context_hotwords()
         self.load_rules()
         self.load_rectify_history()
 
@@ -206,6 +229,20 @@ class TranscriptionEngine:
         count = self.corrector.update_hotwords(hotwords)
         logger.info(f"Updated {count} hotwords")
         self._hotwords_loaded = True
+
+    def update_context_hotwords(self, hotwords: Union[str, List[str]]) -> None:
+        """更新上下文热词（仅用于注入提示，不强制替换）"""
+        if isinstance(hotwords, list):
+            self._context_hotwords_list = hotwords
+        else:
+            self._context_hotwords_list = [
+                line.strip()
+                for line in str(hotwords).split("\n")
+                if line.strip() and not line.startswith("#")
+            ]
+
+        logger.info(f"Updated {len(self._context_hotwords_list)} context hotwords")
+        self._context_hotwords_loaded = True
 
     def _get_injection_hotwords(self, custom_hotwords: Optional[str] = None) -> Optional[str]:
         """获取用于前向注入的热词字符串
@@ -225,12 +262,17 @@ class TranscriptionEngine:
             return None
 
         # 检查是否有已加载的热词
-        if not self._hotwords_list:
+        if not self._context_hotwords_list and not self._hotwords_list:
             return None
 
         # 截取最大数量并拼接
         max_count = settings.hotword_injection_max
-        hotwords_to_inject = self._hotwords_list[:max_count]
+        # Prefer context hotwords for injection (更安全)，fallback to forced list.
+        hotwords_to_inject = (
+            self._context_hotwords_list[:max_count]
+            if self._context_hotwords_list
+            else self._hotwords_list[:max_count]
+        )
         return "\n".join(hotwords_to_inject)
 
     def _get_request_post_processor(self, asr_options: Optional[Dict[str, Any]]) -> TextPostProcessor:
@@ -490,7 +532,10 @@ class TranscriptionEngine:
         # 构建消息
         messages = prompt_builder.build(
             user_content=text,
-            hotwords=self._hotwords_list[:50] if self._hotwords_list else None,
+            hotwords=(
+                (self._context_hotwords_list[:50] if self._context_hotwords_list else None)
+                or (self._hotwords_list[:50] if self._hotwords_list else None)
+            ),
             similarity_candidates=similarity_candidates,
             rectify_context=rectify_context,
             prev_context=prev_context,
@@ -550,7 +595,10 @@ class TranscriptionEngine:
         # 构建消息
         messages = prompt_builder.build(
             user_content=role_obj.format_user_input(text),
-            hotwords=self._hotwords_list[:50] if self._hotwords_list else None,
+            hotwords=(
+                (self._context_hotwords_list[:50] if self._context_hotwords_list else None)
+                or (self._hotwords_list[:50] if self._hotwords_list else None)
+            ),
             similarity_candidates=similarity_candidates,
             rectify_context=rectify_context,
             include_history=False
@@ -663,7 +711,10 @@ class TranscriptionEngine:
             prompt_builder = PromptBuilder(system_prompt=role_obj.system_prompt)
             messages = prompt_builder.build(
                 user_content=f"请润色以下语音识别结果，按编号返回：\n{combined}",
-                hotwords=self._hotwords_list[:50] if self._hotwords_list else None,
+                hotwords=(
+                    (self._context_hotwords_list[:50] if self._context_hotwords_list else None)
+                    or (self._hotwords_list[:50] if self._hotwords_list else None)
+                ),
                 include_history=False
             )
 
@@ -818,6 +869,7 @@ class TranscriptionEngine:
         # 构建返回结果
         result = {
             "text": text,
+            "text_accu": None,
             "sentences": [
                 {
                     "text": s.get("text", ""),
@@ -942,6 +994,7 @@ class TranscriptionEngine:
         # 构建返回结果
         result = {
             "text": text,
+            "text_accu": None,
             "sentences": [
                 {
                     "text": s.get("text", ""),
@@ -1241,16 +1294,25 @@ class TranscriptionEngine:
         merged = chunker.merge_results(chunk_results, sample_rate, overlap_chars=overlap_chars)
 
         raw_text = merged.get("text", "")
+        raw_text_accu = merged.get("text_accu", "") or ""
         sentence_info = merged.get("sentences", [])
 
         text = raw_text
+        text_accu = raw_text_accu
 
         all_similars: List[Tuple[str, str, float]] = []
 
         # 合并后统一应用纠错与后处理，避免破坏 chunk overlap 对齐。
-        if apply_hotword and text:
-            text, similars = self._apply_corrections(text, post_processor=post_processor)
-            all_similars.extend(similars)
+        if apply_hotword:
+            if text:
+                text, similars = self._apply_corrections(text, post_processor=post_processor)
+                all_similars.extend(similars)
+
+            if text_accu:
+                text_accu, similars_accu = self._apply_corrections(
+                    text_accu, post_processor=post_processor
+                )
+                all_similars.extend(similars_accu)
 
             # 同时纠错每个句子的文本
             for sent in sentence_info:
@@ -1298,6 +1360,7 @@ class TranscriptionEngine:
 
         result = {
             "text": text,
+            "text_accu": text_accu if text_accu else None,
             "sentences": [
                 {
                     "text": s.get("text", ""),

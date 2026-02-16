@@ -16,6 +16,10 @@ class TranscribeResponse(BaseModel):
     """转写响应"""
     code: int = Field(default=0, description="状态码 (0=成功)")
     text: str = Field(..., description="完整转写文本")
+    text_accu: Optional[str] = Field(
+        default=None,
+        description="精确拼接文本（长音频分块去重更严格，适合回忆/会议转录）",
+    )
     sentences: List[SentenceInfo] = Field(default=[], description="分句信息")
     transcript: Optional[str] = Field(default=None, description="格式化转写稿")
     raw_text: Optional[str] = Field(default=None, description="原始文本 (未纠错)")

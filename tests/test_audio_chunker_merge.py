@@ -24,4 +24,4 @@ def test_audio_chunker_merge_results_dedupes_noise_prefix_overlap():
     )
 
     assert merged["text"] == "今天天气真好啊"
-
+    assert merged["text_accu"] == "今天天气真好啊"

@@ -65,6 +65,7 @@ async def transcribe_audio(
             return TranscribeResponse(
                 code=0,
                 text=result["text"],
+                text_accu=result.get("text_accu"),
                 sentences=[SentenceInfo(**s) for s in result["sentences"]],
                 transcript=result.get("transcript"),
                 raw_text=result.get("raw_text"),
@@ -133,6 +134,7 @@ async def transcribe_batch(
                         result=TranscribeResponse(
                             code=0,
                             text=result["text"],
+                            text_accu=result.get("text_accu"),
                             sentences=[SentenceInfo(**s) for s in result["sentences"]],
                             transcript=result.get("transcript"),
                             raw_text=result.get("raw_text"),

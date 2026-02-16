@@ -1,0 +1,30 @@
+# 上下文热词（Context Hotwords）
+#
+# 用途：
+# - 仅用于“前向注入/提示模型”，提高会议/回忆转录的专有名词命中率
+# - 不参与强制替换（不会像 hotwords.txt 那样把相似词强行替换成热词）
+#
+# 规则：
+# - 每行一个词/短语
+# - 以 # 开头为注释
+#
+# 建议：
+# - 放“高价值但容易错”的人名/公司名/产品名/项目代号/术语
+# - 可以比 hotwords.txt 更大（但注入过大可能会影响模型，建议控制在 50~200）
+
+# 产品/模型
+TingWu
+FunASR
+Paraformer
+SenseVoice
+Qwen3-ASR
+VibeVoice-ASR
+
+# 组织/产品名
+OpenAI
+Anthropic
+ModelScope
+HuggingFace
+Docker
+Kubernetes
+

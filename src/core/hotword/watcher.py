@@ -95,9 +95,14 @@ class HotwordWatcher:
         self,
         watch_dir: str,
         on_hotwords_change: Optional[Callable[[str], None]] = None,
+        on_context_hotwords_change: Optional[Callable[[str], None]] = None,
         on_rules_change: Optional[Callable[[str], None]] = None,
         on_rectify_change: Optional[Callable[[str], None]] = None,
-        debounce_delay: float = 3.0
+        debounce_delay: float = 3.0,
+        hotwords_filename: str = "hotwords.txt",
+        context_hotwords_filename: str = "hotwords-context.txt",
+        rules_filename: str = "hot-rules.txt",
+        rectify_filename: str = "hot-rectify.txt",
     ):
         """
         初始化监视器
@@ -118,13 +123,15 @@ class HotwordWatcher:
         self._callbacks: Dict[str, Callable[[str], None]] = {}
         self._observer: Optional[Observer] = None
 
-        # 注册回调
+        # 注册回调（文件名可配置，便于多环境/多租户部署）
         if on_hotwords_change:
-            self._callbacks["hotwords.txt"] = on_hotwords_change
+            self._callbacks[str(hotwords_filename)] = on_hotwords_change
+        if on_context_hotwords_change:
+            self._callbacks[str(context_hotwords_filename)] = on_context_hotwords_change
         if on_rules_change:
-            self._callbacks["hot-rules.txt"] = on_rules_change
+            self._callbacks[str(rules_filename)] = on_rules_change
         if on_rectify_change:
-            self._callbacks["hot-rectify.txt"] = on_rectify_change
+            self._callbacks[str(rectify_filename)] = on_rectify_change
 
         # 创建处理器
         self._handler = HotwordFileHandler(
@@ -179,9 +186,14 @@ def get_hotword_watcher() -> Optional[HotwordWatcher]:
 def setup_hotword_watcher(
     watch_dir: str,
     on_hotwords_change: Optional[Callable[[str], None]] = None,
+    on_context_hotwords_change: Optional[Callable[[str], None]] = None,
     on_rules_change: Optional[Callable[[str], None]] = None,
     on_rectify_change: Optional[Callable[[str], None]] = None,
-    debounce_delay: float = 3.0
+    debounce_delay: float = 3.0,
+    hotwords_filename: str = "hotwords.txt",
+    context_hotwords_filename: str = "hotwords-context.txt",
+    rules_filename: str = "hot-rules.txt",
+    rectify_filename: str = "hot-rectify.txt",
 ) -> Optional[HotwordWatcher]:
     """设置并启动全局监视器"""
     global _watcher
@@ -192,9 +204,14 @@ def setup_hotword_watcher(
     _watcher = HotwordWatcher(
         watch_dir=watch_dir,
         on_hotwords_change=on_hotwords_change,
+        on_context_hotwords_change=on_context_hotwords_change,
         on_rules_change=on_rules_change,
         on_rectify_change=on_rectify_change,
-        debounce_delay=debounce_delay
+        debounce_delay=debounce_delay,
+        hotwords_filename=hotwords_filename,
+        context_hotwords_filename=context_hotwords_filename,
+        rules_filename=rules_filename,
+        rectify_filename=rectify_filename,
     )
     _watcher.start()
     return _watcher

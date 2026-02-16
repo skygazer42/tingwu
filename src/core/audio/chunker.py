@@ -10,6 +10,11 @@ from concurrent.futures import ThreadPoolExecutor
 import asyncio
 
 from src.core.text_processor.text_merge import merge_by_text
+from src.core.text_processor.text_merge_accu import (
+    chars_to_text,
+    linear_chars_with_timestamps,
+    merge_chars_by_sequence_matcher,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -339,6 +344,8 @@ class AudioChunker:
         sorted_results = sorted(chunk_results, key=lambda x: x["start_sample"])
 
         merged_text = ""
+        merged_accu_chars: List[str] = []
+        merged_accu_ts: List[float] = []
         all_sentences = []
         prev_end_sample: Optional[int] = None
 
@@ -358,9 +365,11 @@ class AudioChunker:
 
             # Overlap window (ms) between previous successful chunk and current chunk.
             overlap_ms = 0
+            overlap_s = 0.0
             if prev_end_sample is not None and prev_end_sample > start_sample:
                 overlap_samples = prev_end_sample - start_sample
                 overlap_ms = int(overlap_samples / sample_rate * 1000)
+                overlap_s = float(overlap_samples) / float(sample_rate)
 
             # Snapshot of already-merged text before integrating this chunk.
             prev_text_snapshot = merged_text
@@ -389,11 +398,27 @@ class AudioChunker:
                     overlap_chars=max(0, int(overlap_chars)),
                 )
 
+                # Precision merge (text_accu): time-windowed SequenceMatcher alignment.
+                # We approximate timestamps per-character over the chunk time range.
+                start_s = float(start_sample) / float(sample_rate)
+                end_s = float(end_sample) / float(sample_rate) if end_sample > 0 else start_s
+                new_chars, new_ts = linear_chars_with_timestamps(text, start_s=start_s, end_s=end_s)
+                merged_accu_chars, merged_accu_ts = merge_chars_by_sequence_matcher(
+                    merged_accu_chars,
+                    merged_accu_ts,
+                    new_chars,
+                    new_ts,
+                    offset_s=start_s,
+                    overlap_s=overlap_s,
+                    is_first_segment=not merged_accu_chars,
+                )
+
             if end_sample > 0:
                 prev_end_sample = end_sample if prev_end_sample is None else max(prev_end_sample, end_sample)
 
         return {
             "text": merged_text,
+            "text_accu": chars_to_text(merged_accu_chars) if merged_accu_chars else merged_text,
             "sentences": all_sentences,
         }
 

@@ -84,6 +84,8 @@ class Settings(BaseSettings):
 
     # 热词配置
     hotwords_file: str = "hotwords.txt"
+    # 仅用于“上下文提示/前向注入”的热词（不强制替换），更适合会议/回忆转录的专有名词列表
+    hotwords_context_file: str = "hotwords-context.txt"
     hotwords_threshold: float = 0.85
     hotword_injection_enable: bool = True       # 热词前向注入 (传递给ASR模型)
     hotword_injection_max: int = 50             # 最大注入热词数
