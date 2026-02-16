@@ -60,6 +60,7 @@ export function TranscribeOptions() {
   })
 
   const supportsSpeaker = backendInfoQuery.data?.capabilities.supports_speaker
+  const supportsSpeakerFallback = backendInfoQuery.data?.capabilities.supports_speaker_fallback
   const advancedEnabled = advancedAsrOptionsText.trim().length > 0
 
   const applyAsrOptionsTemplate = (template: Record<string, unknown>) => {
@@ -117,10 +118,12 @@ export function TranscribeOptions() {
                   className={
                     supportsSpeaker
                       ? 'border-green-200 text-green-700 bg-green-500/5'
-                      : 'border-amber-200 text-amber-700 bg-amber-500/5'
+                      : supportsSpeakerFallback
+                        ? 'border-blue-200 text-blue-700 bg-blue-500/5'
+                        : 'border-amber-200 text-amber-700 bg-amber-500/5'
                   }
                 >
-                  {supportsSpeaker ? '支持说话人' : '不支持说话人'}
+                  {supportsSpeaker ? '支持说话人' : supportsSpeakerFallback ? 'fallback 说话人' : '不支持说话人'}
                 </Badge>
               </div>
             )}
@@ -203,7 +206,9 @@ export function TranscribeOptions() {
 
             {supportsSpeaker === false && (
               <p className="text-xs text-muted-foreground">
-                当前后端不支持说话人识别，将自动忽略该开关。
+                {supportsSpeakerFallback
+                  ? '当前后端原生不支持说话人识别；已启用 fallback（需要辅助服务可用）。'
+                  : '当前后端不支持说话人识别，将自动忽略该开关。'}
               </p>
             )}
           </div>
