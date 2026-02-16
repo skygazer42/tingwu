@@ -12,6 +12,16 @@ class SentenceInfo(BaseModel):
     speaker_id: Optional[int] = Field(default=None, description="说话人 ID")
 
 
+class SpeakerTurn(BaseModel):
+    """说话人 turn/段落（合并后的说话人连续发言）"""
+    speaker: str = Field(..., description="说话人标签")
+    speaker_id: int = Field(..., description="说话人 ID")
+    start: int = Field(..., description="开始时间 (毫秒)")
+    end: int = Field(..., description="结束时间 (毫秒)")
+    text: str = Field(..., description="该 turn 的文本")
+    sentence_count: int = Field(default=1, description="包含句子数")
+
+
 class TranscribeResponse(BaseModel):
     """转写响应"""
     code: int = Field(default=0, description="状态码 (0=成功)")
@@ -21,6 +31,7 @@ class TranscribeResponse(BaseModel):
         description="精确拼接文本（长音频分块去重更严格，适合回忆/会议转录）",
     )
     sentences: List[SentenceInfo] = Field(default=[], description="分句信息")
+    speaker_turns: Optional[List[SpeakerTurn]] = Field(default=None, description="说话人 turn/段落")
     transcript: Optional[str] = Field(default=None, description="格式化转写稿")
     raw_text: Optional[str] = Field(default=None, description="原始文本 (未纠错)")
 

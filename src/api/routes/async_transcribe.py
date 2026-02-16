@@ -154,10 +154,27 @@ def _handle_url_transcribe(payload: dict) -> dict:
                 "speaker": sent.get("speaker")
             })
 
+        speaker_turns = None
+        if with_speaker:
+            speaker_turns = []
+            for turn in result.get("speaker_turns") or []:
+                speaker_turns.append(
+                    {
+                        "speaker": turn.get("speaker"),
+                        "speaker_id": turn.get("speaker_id"),
+                        "start": ms_to_srt_time(int(turn.get("start", 0) or 0)),
+                        "end": ms_to_srt_time(int(turn.get("end", 0) or 0)),
+                        "text": turn.get("text", ""),
+                        "sentence_count": turn.get("sentence_count", 1),
+                    }
+                )
+
         return {
             "text": result.get("text", ""),
             "text_accu": result.get("text_accu"),
             "sentences": sentences,
+            "speaker_turns": speaker_turns,
+            "transcript": result.get("transcript"),
             "raw_text": result.get("raw_text", "")
         }
 

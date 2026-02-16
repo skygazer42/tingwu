@@ -5,7 +5,7 @@ from typing import Optional, List
 from fastapi import APIRouter, File, UploadFile, Form, HTTPException
 
 from src.api.schemas import (
-    TranscribeResponse, SentenceInfo,
+    TranscribeResponse, SentenceInfo, SpeakerTurn,
     BatchTranscribeResponse, BatchTranscribeItem
 )
 from src.api.dependencies import process_audio_file
@@ -67,10 +67,18 @@ async def transcribe_audio(
                 text=result["text"],
                 text_accu=result.get("text_accu"),
                 sentences=[SentenceInfo(**s) for s in result["sentences"]],
+                speaker_turns=(
+                    [SpeakerTurn(**t) for t in result.get("speaker_turns", [])]
+                    if result.get("speaker_turns") is not None
+                    else None
+                ),
                 transcript=result.get("transcript"),
                 raw_text=result.get("raw_text"),
             )
 
+    except ValueError as e:
+        metrics.increment_failure()
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         metrics.increment_failure()
         logger.error(f"Transcription failed: {e}", exc_info=True)
@@ -136,6 +144,11 @@ async def transcribe_batch(
                             text=result["text"],
                             text_accu=result.get("text_accu"),
                             sentences=[SentenceInfo(**s) for s in result["sentences"]],
+                            speaker_turns=(
+                                [SpeakerTurn(**t) for t in result.get("speaker_turns", [])]
+                                if result.get("speaker_turns") is not None
+                                else None
+                            ),
                             transcript=result.get("transcript"),
                             raw_text=result.get("raw_text"),
                         ),
