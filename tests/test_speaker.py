@@ -17,6 +17,12 @@ def test_speaker_labeling():
     assert result[1]["speaker"] == "说话人乙"
     assert result[2]["speaker"] == "说话人甲"
 
+def test_speaker_labeling_numeric_style():
+    labeler = SpeakerLabeler(label_style="numeric")
+    out = labeler.label_speakers([{"text": "A", "spk": 0}, {"text": "B", "spk": 1}])
+    assert out[0]["speaker"] == "说话人1"
+    assert out[1]["speaker"] == "说话人2"
+
 def test_speaker_labels_cycle():
     """测试多说话人标签"""
     labeler = SpeakerLabeler()

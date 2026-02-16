@@ -7,12 +7,18 @@ SPEAKER_LABELS_ZH = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛"]
 class SpeakerLabeler:
     """说话人标注器"""
 
-    def __init__(self, label_prefix: str = "说话人"):
+    def __init__(self, label_prefix: str = "说话人", label_style: str = "zh"):
         self.label_prefix = label_prefix
+        style = (label_style or "zh").strip().lower()
+        if style not in ("zh", "numeric"):
+            raise ValueError("label_style must be one of: zh, numeric")
+        self.label_style = style
         self.labels = SPEAKER_LABELS_ZH
 
     def _get_speaker_label(self, spk_id: int) -> str:
         """获取说话人标签"""
+        if self.label_style == "numeric":
+            return f"{self.label_prefix}{spk_id + 1}"
         if spk_id < len(self.labels):
             return f"{self.label_prefix}{self.labels[spk_id]}"
         return f"{self.label_prefix}{spk_id + 1}"
