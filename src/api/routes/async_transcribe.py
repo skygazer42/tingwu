@@ -102,6 +102,10 @@ def _handle_url_transcribe(payload: dict) -> dict:
     url = payload["url"]
     with_speaker = payload.get("with_speaker", False)
     apply_hotword = payload.get("apply_hotword", True)
+    apply_llm = payload.get("apply_llm", False)
+    llm_role = payload.get("llm_role", "default")
+    hotwords = payload.get("hotwords")
+    asr_options = payload.get("asr_options")
 
     # 解析 URL 获取文件扩展名
     parsed = urlparse(url)
@@ -140,42 +144,23 @@ def _handle_url_transcribe(payload: dict) -> dict:
         result = transcription_engine.transcribe_long_audio(
             audio_bytes,
             with_speaker=with_speaker,
-            apply_hotword=apply_hotword
+            apply_hotword=apply_hotword,
+            apply_llm=apply_llm,
+            llm_role=str(llm_role) if llm_role else "default",
+            hotwords=hotwords,
+            asr_options=asr_options,
         )
 
-        # 格式化结果
-        sentences = []
-        for i, sent in enumerate(result.get("sentences", []), 1):
-            sentences.append({
-                "sentence_index": i,
-                "text": sent["text"],
-                "start": ms_to_srt_time(sent["start"]),
-                "end": ms_to_srt_time(sent["end"]),
-                "speaker": sent.get("speaker")
-            })
-
-        speaker_turns = None
-        if with_speaker:
-            speaker_turns = []
-            for turn in result.get("speaker_turns") or []:
-                speaker_turns.append(
-                    {
-                        "speaker": turn.get("speaker"),
-                        "speaker_id": turn.get("speaker_id"),
-                        "start": ms_to_srt_time(int(turn.get("start", 0) or 0)),
-                        "end": ms_to_srt_time(int(turn.get("end", 0) or 0)),
-                        "text": turn.get("text", ""),
-                        "sentence_count": turn.get("sentence_count", 1),
-                    }
-                )
-
+        # Keep the async URL task result schema consistent with the synchronous HTTP
+        # `/api/v1/transcribe` endpoint so the frontend can reuse Timeline/Exports.
         return {
+            "code": 0,
             "text": result.get("text", ""),
             "text_accu": result.get("text_accu"),
-            "sentences": sentences,
-            "speaker_turns": speaker_turns,
+            "sentences": result.get("sentences", []),
+            "speaker_turns": result.get("speaker_turns"),
             "transcript": result.get("transcript"),
-            "raw_text": result.get("raw_text", "")
+            "raw_text": result.get("raw_text", ""),
         }
 
     finally:
@@ -195,6 +180,10 @@ async def transcribe_from_url(
     audio_url: str = Form(..., description="音频/视频 URL"),
     with_speaker: bool = Form(default=False, description="是否识别说话人"),
     apply_hotword: bool = Form(default=True, description="是否应用热词纠错"),
+    apply_llm: bool = Form(default=False, description="是否应用 LLM 润色"),
+    llm_role: str = Form(default="default", description="LLM 角色"),
+    hotwords: Optional[str] = Form(default=None, description="临时热词"),
+    asr_options: Optional[str] = Form(default=None, description="ASR options JSON (per-request tuning)"),
 ):
     """
     从 URL 转写音频（异步）
@@ -205,7 +194,11 @@ async def transcribe_from_url(
     task_id = task_manager.submit("url_transcribe", {
         "url": audio_url,
         "with_speaker": with_speaker,
-        "apply_hotword": apply_hotword
+        "apply_hotword": apply_hotword,
+        "apply_llm": apply_llm,
+        "llm_role": llm_role,
+        "hotwords": hotwords,
+        "asr_options": asr_options,
     })
 
     return {

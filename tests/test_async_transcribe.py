@@ -126,3 +126,69 @@ class TestAsyncTranscribeHelpers:
 
         assert ms_to_srt_time(999) == "00:00:00.999"
         assert ms_to_srt_time(3600000) == "01:00:00.000"
+
+
+def test_handle_url_transcribe_returns_engine_schema():
+    """URL 异步转写任务应返回与 HTTP /transcribe 一致的 schema。
+
+    重点：sentences/speaker_turns 的时间戳必须保持为毫秒整数，且保留 speaker_id，
+    否则前端时间轴与说话人统计无法复用。
+    """
+    from unittest.mock import MagicMock, patch
+
+    import src.api.routes.async_transcribe as async_mod
+
+    fake_engine_result = {
+        "code": 0,
+        "text": "你好",
+        "text_accu": "你好",
+        "sentences": [
+            {"text": "你好", "start": 0, "end": 500, "speaker": "说话人1", "speaker_id": 0},
+        ],
+        "speaker_turns": [
+            {
+                "speaker": "说话人1",
+                "speaker_id": 0,
+                "start": 0,
+                "end": 500,
+                "text": "你好",
+                "sentence_count": 1,
+            }
+        ],
+        "transcript": "[00:00 - 00:00] 说话人1: 你好",
+        "raw_text": "你好",
+    }
+
+    # Mock HTTP download and ffmpeg conversion; engine is mocked so audio bytes don't matter.
+    mock_resp = MagicMock()
+    mock_resp.content = b"RIFF....WAVEfmt "  # dummy bytes
+    mock_resp.raise_for_status.return_value = None
+
+    mock_httpx_client = MagicMock()
+    mock_httpx_client.__enter__.return_value = mock_httpx_client
+    mock_httpx_client.__exit__.return_value = None
+    mock_httpx_client.get.return_value = mock_resp
+
+    def _fake_convert(_in: str, out: str) -> bool:
+        # Ensure the "converted" file exists for reading.
+        with open(out, "wb") as f:
+            f.write(b"fake_wav_bytes")
+        return True
+
+    with (
+        patch.object(async_mod, "httpx") as mock_httpx,
+        patch.object(async_mod, "convert_audio_to_pcm", side_effect=_fake_convert),
+        patch.object(async_mod.transcription_engine, "transcribe_long_audio", return_value=fake_engine_result),
+    ):
+        mock_httpx.Client.return_value = mock_httpx_client
+
+        out = async_mod._handle_url_transcribe(
+            {"url": "https://example.com/audio.wav", "with_speaker": True, "apply_hotword": True}
+        )
+
+    assert out["code"] == 0
+    assert isinstance(out["sentences"][0]["start"], int)
+    assert isinstance(out["sentences"][0]["end"], int)
+    assert out["sentences"][0]["speaker_id"] == 0
+    assert isinstance(out["speaker_turns"][0]["start"], int)
+    assert isinstance(out["speaker_turns"][0]["end"], int)
