@@ -85,6 +85,14 @@ class ModelManager:
                     long_audio_threshold_s=settings.router_long_audio_threshold_s,
                     force_vibevoice_when_with_speaker=settings.router_force_vibevoice_when_with_speaker,
                 )
+            elif backend_type == "whisper":
+                self._backend = get_backend(
+                    backend_type="whisper",
+                    model=settings.whisper_model,
+                    device=settings.device,
+                    language=settings.whisper_language,
+                    download_root=settings.whisper_download_root,
+                )
             else:
                 raise ValueError(f"Unknown backend type: {backend_type}")
 

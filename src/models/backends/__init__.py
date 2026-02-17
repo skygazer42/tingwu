@@ -13,7 +13,7 @@ from .base import ASRBackend
 
 logger = logging.getLogger(__name__)
 
-BackendType = Literal["pytorch", "onnx", "sensevoice", "gguf", "qwen3", "vibevoice", "router"]
+BackendType = Literal["pytorch", "onnx", "sensevoice", "gguf", "qwen3", "vibevoice", "router", "whisper"]
 
 
 def get_backend(
@@ -26,7 +26,7 @@ def get_backend(
     """获取 ASR 后端实例
 
     Args:
-        backend_type: 后端类型 ("pytorch", "onnx", "sensevoice", "gguf", "qwen3", "vibevoice", "router")
+        backend_type: 后端类型 ("pytorch", "onnx", "sensevoice", "gguf", "qwen3", "vibevoice", "router", "whisper")
         device: 设备类型 ("cuda" 或 "cpu")
         ngpu: GPU 数量
         ncpu: CPU 核心数
@@ -90,6 +90,10 @@ def get_backend(
     elif backend_type == "router":
         from .router import RouterBackend
         return RouterBackend(**kwargs)
+
+    elif backend_type == "whisper":
+        from .whisper import WhisperBackend
+        return WhisperBackend(**kwargs)
 
     else:
         raise ValueError(f"不支持的后端类型: {backend_type}")

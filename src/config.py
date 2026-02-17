@@ -21,7 +21,16 @@ class Settings(BaseSettings):
     outputs_dir: Path = data_dir / "outputs"
 
     # ASR 后端配置
-    asr_backend: Literal["pytorch", "onnx", "sensevoice", "gguf", "qwen3", "vibevoice", "router"] = "pytorch"
+    asr_backend: Literal[
+        "pytorch",
+        "onnx",
+        "sensevoice",
+        "gguf",
+        "qwen3",
+        "vibevoice",
+        "router",
+        "whisper",
+    ] = "pytorch"
 
     # FunASR 模型配置 (PyTorch 后端)
     asr_model: str = "paraformer-zh"
@@ -108,6 +117,12 @@ class Settings(BaseSettings):
     router_force_vibevoice_when_with_speaker: bool = True
     router_short_backend: Literal["qwen3", "vibevoice"] = "qwen3"
     router_long_backend: Literal["qwen3", "vibevoice"] = "vibevoice"
+
+    # Local Whisper backend (openai-whisper)
+    whisper_model: str = "small"
+    whisper_language: Optional[str] = "zh"
+    # Set to a persistent directory (e.g. /app/data/models/whisper) to cache weights.
+    whisper_download_root: str = ""
 
     # 设备配置
     device: Literal["cuda", "cpu"] = "cuda"
