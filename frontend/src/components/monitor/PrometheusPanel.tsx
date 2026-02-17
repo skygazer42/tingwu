@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { ExternalLink, Copy, Download, Code } from "lucide-react"
+import { ExternalLink, Copy, Download, Code, RefreshCw, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -58,6 +58,9 @@ function PrometheusPanel({
   ...props
 }: PrometheusPanelProps) {
   const { baseUrl } = useBackendStore()
+  const [previewText, setPreviewText] = React.useState<string | null>(null)
+  const [isPreviewLoading, setIsPreviewLoading] = React.useState(false)
+  const [previewError, setPreviewError] = React.useState<string | null>(null)
 
   const prometheusTarget = React.useMemo(() => {
     if (!baseUrl) {
@@ -107,6 +110,29 @@ function PrometheusPanel({
   const handleOpenEndpoint = () => {
     window.open(fullEndpoint, '_blank')
   }
+
+  const handleFetchPreview = async () => {
+    setIsPreviewLoading(true)
+    setPreviewError(null)
+    try {
+      const res = await fetch(fullEndpoint, { cache: "no-store" })
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`)
+      }
+      const text = await res.text()
+      setPreviewText(text)
+      toast.success("指标已拉取")
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "请求失败"
+      setPreviewError(msg)
+      toast.error("指标拉取失败", { description: msg })
+    } finally {
+      setIsPreviewLoading(false)
+    }
+  }
+
+  const effectiveMetricsData = metricsData ?? previewText
+  const effectiveLoading = isLoading || isPreviewLoading
 
   return (
     <Card className={className} {...props}>
@@ -177,17 +203,41 @@ function PrometheusPanel({
         </div>
 
         {/* 指标预览 */}
-        {metricsData && (
-          <div className="space-y-2">
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
             <label className="text-sm font-medium">指标预览</label>
-            <pre className={cn(
-              "p-3 rounded-lg bg-muted text-xs font-mono overflow-auto max-h-[200px]",
-              isLoading && "animate-pulse"
-            )}>
-              {metricsData}
-            </pre>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleFetchPreview}
+              disabled={effectiveLoading}
+            >
+              {effectiveLoading ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-1" />
+              )}
+              拉取
+            </Button>
           </div>
-        )}
+
+          {previewError && (
+            <p className="text-xs text-destructive">
+              {previewError}
+            </p>
+          )}
+
+          {effectiveMetricsData && (
+            <pre
+              className={cn(
+                "p-3 rounded-lg bg-muted text-xs font-mono overflow-auto max-h-[200px]",
+                effectiveLoading && "animate-pulse"
+              )}
+            >
+              {effectiveMetricsData}
+            </pre>
+          )}
+        </div>
       </CardContent>
     </Card>
   )

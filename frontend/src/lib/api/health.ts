@@ -16,3 +16,13 @@ export async function getMetrics(): Promise<MetricsResponse> {
   const response = await apiClient.get<MetricsResponse>('/metrics')
   return response.data
 }
+
+/**
+ * 获取 Prometheus 文本指标
+ */
+export async function getPrometheusMetrics(): Promise<string> {
+  const response = await apiClient.get<string>('/metrics/prometheus', {
+    responseType: 'text',
+  })
+  return response.data
+}

@@ -6,6 +6,7 @@ import type {
   UrlTranscribeResponse,
   TaskResultResponse,
   VideoTranscribeResponse,
+  WhisperAsrResponse,
 } from './types'
 
 export interface UploadProgressCallback {
@@ -250,6 +251,40 @@ export async function getTaskResult(
     },
     signal: options.signal,
     baseURL: overrides.baseURL,
+  })
+  return response.data
+}
+
+/**
+ * Whisper ASR WebService 兼容接口
+ */
+export async function transcribeWhisperCompatible(
+  file: File,
+  options: {
+    fileType?: 'audio' | 'video'
+    withSpeaker?: boolean
+    applyHotword?: boolean
+    signal?: AbortSignal
+  } = {}
+): Promise<WhisperAsrResponse> {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  if (options.fileType) {
+    formData.append('file_type', options.fileType)
+  }
+  if (options.withSpeaker !== undefined) {
+    formData.append('with_speaker', String(options.withSpeaker))
+  }
+  if (options.applyHotword !== undefined) {
+    formData.append('apply_hotword', String(options.applyHotword))
+  }
+
+  const response = await apiClient.post<WhisperAsrResponse>('/api/v1/asr', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+    signal: options.signal,
   })
   return response.data
 }

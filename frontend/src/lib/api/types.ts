@@ -82,6 +82,23 @@ export interface VideoTranscribeResponse extends TranscribeResponse {
   audio_extracted?: boolean
 }
 
+// Whisper 兼容接口（/api/v1/asr）
+export interface WhisperAsrSegment {
+  sentence_index: number
+  text: string
+  /** HH:MM:SS.mmm */
+  start: string
+  /** HH:MM:SS.mmm */
+  end: string
+  speaker?: string
+}
+
+export interface WhisperAsrResponse {
+  text: string
+  segments: WhisperAsrSegment[]
+  language: string
+}
+
 export interface HealthResponse {
   status: string
   version: string

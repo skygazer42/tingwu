@@ -12,7 +12,7 @@ import { HistoryList } from '@/components/history/HistoryList'
 import { UrlTranscribe } from '@/components/url/UrlTranscribe'
 import { TaskManager, type Task } from '@/components/task/TaskManager'
 import { useTranscriptionStore } from '@/stores'
-import { useHistoryStore } from '@/stores/historyStore'
+import { useHistoryStore, type HistoryItem } from '@/stores/historyStore'
 import { getApiBaseUrl, getTaskResult, transcribeAudio, transcribeBatch, transcribeUrl } from '@/lib/api'
 import type { SentenceInfo, TranscribeResponse } from '@/lib/api/types'
 
@@ -44,6 +44,7 @@ export default function TranscribePage() {
   const [inputMode, setInputMode] = useState<string>('file')
   const [urlTasks, setUrlTasks] = useState<UrlTask[]>([])
   const [isSubmittingUrl, setIsSubmittingUrl] = useState(false)
+  const [resultFilename, setResultFilename] = useState<string | undefined>()
 
   const urlPollingTimersRef = useRef<Record<string, number>>({})
   const urlPollingStartedAtRef = useRef<Record<string, number>>({})
@@ -184,19 +185,21 @@ export default function TranscribePage() {
 
     setTranscribing(true)
     setResult(null)
+    setResultFilename(undefined)
 
     try {
-      const transcribeOptions = {
-        ...options,
-        hotwords: tempHotwords || undefined,
-        asrOptionsText: advancedAsrOptionsText.trim() ? advancedAsrOptionsText : undefined,
-      }
+        const transcribeOptions = {
+          ...options,
+          hotwords: tempHotwords || undefined,
+          asrOptionsText: advancedAsrOptionsText.trim() ? advancedAsrOptionsText : undefined,
+        }
 
       if (files.length === 1) {
         // 单文件转写
         const response = await transcribeAudio(files[0], transcribeOptions)
         if (response.code === 0) {
           setResult(response)
+          setResultFilename(files[0].name.replace(/\.[^/.]+$/, ''))
           // 保存到历史记录
           addItem({
             filename: files[0].name,
@@ -222,6 +225,7 @@ export default function TranscribePage() {
           const firstSuccess = response.results.find(r => r.success && r.result)
           if (firstSuccess?.result) {
             setResult(firstSuccess.result)
+            setResultFilename((firstSuccess.filename || '').replace(/\.[^/.]+$/, '') || undefined)
           }
           // 保存批量结果到历史
           response.results.forEach((r, idx) => {
@@ -310,6 +314,7 @@ export default function TranscribePage() {
     }
 
     setResult(task.result)
+    setResultFilename((task.filename || task.id).replace(/\.[^/.]+$/, ''))
     setSelectedSentence(null)
     setSelectedIndex(undefined)
 
@@ -362,12 +367,19 @@ export default function TranscribePage() {
   const handleClear = () => {
     clearFiles()
     setResult(null)
+    setResultFilename(undefined)
     setSelectedSentence(null)
     setSelectedIndex(undefined)
   }
 
-  const handleViewHistoryItem = (item: { text: string; sentences: SentenceInfo[] }) => {
-    setResult({ ...item, code: 0, raw_text: item.text })
+  const handleViewHistoryItem = (item: HistoryItem) => {
+    setResult({
+      code: 0,
+      text: item.text,
+      sentences: item.sentences,
+      raw_text: item.rawText,
+    })
+    setResultFilename(item.filename.replace(/\.[^/.]+$/, ''))
     toast.success('已加载历史记录')
   }
 
@@ -468,7 +480,7 @@ export default function TranscribePage() {
       {result && (
         <TranscriptView
           result={result}
-          filename={files[0]?.name?.replace(/\.[^/.]+$/, '')}
+          filename={resultFilename}
         />
       )}
 
