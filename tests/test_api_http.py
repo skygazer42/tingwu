@@ -176,3 +176,38 @@ def test_transcribe_no_file(client):
     """测试无文件上传"""
     response = client.post("/api/v1/transcribe")
     assert response.status_code == 422  # Validation error
+
+
+def test_transcribe_url_asr_options_invalid_json(client):
+    with patch("src.api.routes.async_transcribe.task_manager.submit") as mock_submit:
+        mock_submit.return_value = "task123"
+
+        data = {"audio_url": "https://example.com/audio.wav", "asr_options": "{not json"}
+        response = client.post("/api/v1/trans/url", data=data)
+
+        assert response.status_code == 400
+        assert "asr_options" in response.json().get("detail", "")
+        mock_submit.assert_not_called()
+
+
+def test_transcribe_url_asr_options_is_passed_to_task_manager(client):
+    with patch("src.api.routes.async_transcribe.task_manager.submit") as mock_submit:
+        mock_submit.return_value = "task123"
+
+        data = {
+            "audio_url": "https://example.com/audio.wav",
+            "asr_options": '{"chunking":{"max_workers":1,"overlap_chars":42}}',
+        }
+        response = client.post("/api/v1/trans/url", data=data)
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "success"
+        assert body["data"]["task_id"] == "task123"
+
+        mock_submit.assert_called_once()
+        args, kwargs = mock_submit.call_args
+        assert kwargs == {}
+        assert args[0] == "url_transcribe"
+        payload = args[1]
+        assert payload["asr_options"] == {"chunking": {"max_workers": 1, "overlap_chars": 42}}

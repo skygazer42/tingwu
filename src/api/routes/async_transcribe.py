@@ -18,6 +18,7 @@ import httpx
 import ffmpeg
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
+from src.api.asr_options import parse_asr_options
 from src.config import settings
 from src.core.engine import transcription_engine
 from src.core.task_manager import task_manager, TaskStatus
@@ -191,6 +192,12 @@ async def transcribe_from_url(
     提交任务后返回 task_id，通过 /result 接口查询结果。
     支持的格式：wav, mp3, m4a, flac, ogg, mp4, avi, mkv 等
     """
+    parsed_asr_options = None
+    try:
+        parsed_asr_options = parse_asr_options(asr_options)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     task_id = task_manager.submit("url_transcribe", {
         "url": audio_url,
         "with_speaker": with_speaker,
@@ -198,7 +205,7 @@ async def transcribe_from_url(
         "apply_llm": apply_llm,
         "llm_role": llm_role,
         "hotwords": hotwords,
-        "asr_options": asr_options,
+        "asr_options": parsed_asr_options,
     })
 
     return {
