@@ -505,6 +505,8 @@ Content-Type: multipart/form-data
 | apply_hotword | bool | ❌ | true | 是否应用热词纠错 |
 | apply_llm | bool | ❌ | false | 是否启用 LLM 润色 |
 | llm_role | string | ❌ | "default" | LLM 角色 |
+| hotwords | string | ❌ | null | 临时热词 (空格分隔) |
+| asr_options | string | ❌ | null | 请求级调参 JSON 字符串（同单文件） |
 
 **响应示例**:
 
@@ -520,6 +522,7 @@ Content-Type: multipart/form-data
       "end": 3000
     }
   ],
+  "speaker_turns": null,
   "transcript": null,
   "raw_text": "欢迎观看本视频"
 }

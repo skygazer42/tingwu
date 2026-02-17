@@ -211,3 +211,97 @@ def test_transcribe_url_asr_options_is_passed_to_task_manager(client):
         assert args[0] == "url_transcribe"
         payload = args[1]
         assert payload["asr_options"] == {"chunking": {"max_workers": 1, "overlap_chars": 42}}
+
+
+def test_transcribe_video_asr_options_invalid_json(client):
+    with (
+        patch("src.api.routes.async_transcribe.extract_audio_from_video") as mock_extract,
+        patch(
+            "src.api.routes.async_transcribe.transcription_engine.transcribe_auto_async",
+            new_callable=AsyncMock,
+        ) as mock_transcribe_auto_async,
+        patch(
+            "src.api.routes.async_transcribe.process_audio_file",
+            create=True,
+        ) as mock_process_audio_file,
+    ):
+        mock_extract.return_value = True
+
+        files = {"file": ("test.mp4", io.BytesIO(b"fake_video"), "video/mp4")}
+        data = {"asr_options": "{not json"}
+        response = client.post("/api/v1/trans/video", files=files, data=data)
+
+        assert response.status_code == 400
+        assert "asr_options" in response.json().get("detail", "")
+
+        mock_transcribe_auto_async.assert_not_awaited()
+        mock_process_audio_file.assert_not_called()
+
+
+def test_transcribe_video_passes_hotwords_and_asr_options_and_returns_speaker_turns(client):
+    engine_result = {
+        "text": "你好",
+        "text_accu": "你好",
+        "sentences": [{"text": "你好", "start": 0, "end": 500, "speaker": "说话人1", "speaker_id": 0}],
+        "speaker_turns": [
+            {
+                "speaker": "说话人1",
+                "speaker_id": 0,
+                "start": 0,
+                "end": 500,
+                "text": "你好",
+                "sentence_count": 1,
+            }
+        ],
+        "transcript": "[00:00 - 00:00] 说话人1: 你好",
+        "raw_text": "你好",
+    }
+
+    async def fake_process(file, preprocess_options=None):
+        assert preprocess_options == {"normalize_enable": False}
+        yield b"\x00" * 16000
+
+    with (
+        patch("src.api.routes.async_transcribe.extract_audio_from_video") as mock_extract,
+        patch(
+            "src.api.routes.async_transcribe.transcription_engine.transcribe_auto_async",
+            new_callable=AsyncMock,
+        ) as mock_transcribe_auto_async,
+        patch(
+            "src.api.routes.async_transcribe.process_audio_file",
+            create=True,
+        ) as mock_process_audio_file,
+    ):
+        def _fake_extract(_in: str, out: str) -> bool:
+            # Ensure the "extracted" file exists for the current implementation.
+            with open(out, "wb") as f:
+                f.write(b"fake_wav_bytes")
+            return True
+
+        mock_extract.side_effect = _fake_extract
+        mock_transcribe_auto_async.return_value = engine_result
+        mock_process_audio_file.side_effect = fake_process
+
+        files = {"file": ("test.mp4", io.BytesIO(b"fake_video"), "video/mp4")}
+        asr_options = '{"preprocess":{"normalize_enable":false},"speaker":{"label_style":"numeric"}}'
+        data = {
+            "with_speaker": "true",
+            "apply_hotword": "true",
+            "apply_llm": "false",
+            "llm_role": "default",
+            "hotwords": "张三 李四",
+            "asr_options": asr_options,
+        }
+
+        response = client.post("/api/v1/trans/video", files=files, data=data)
+        assert response.status_code == 200
+
+        body = response.json()
+        assert body["code"] == 0
+        assert body["text"] == "你好"
+        assert body["speaker_turns"][0]["speaker_id"] == 0
+
+        mock_transcribe_auto_async.assert_awaited()
+        kwargs = mock_transcribe_auto_async.await_args.kwargs
+        assert kwargs["hotwords"] == "张三 李四"
+        assert kwargs["asr_options"] == {"preprocess": {"normalize_enable": False}, "speaker": {"label_style": "numeric"}}

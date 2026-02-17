@@ -19,6 +19,7 @@ import ffmpeg
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from src.api.asr_options import parse_asr_options
+from src.api.dependencies import process_audio_file
 from src.config import settings
 from src.core.engine import transcription_engine
 from src.core.task_manager import task_manager, TaskStatus
@@ -364,6 +365,8 @@ async def transcribe_video(
     apply_hotword: bool = Form(default=True, description="是否应用热词纠错"),
     apply_llm: bool = Form(default=False, description="是否应用 LLM 润色"),
     llm_role: str = Form(default="default", description="LLM 角色"),
+    hotwords: Optional[str] = Form(default=None, description="临时热词"),
+    asr_options: Optional[str] = Form(default=None, description="ASR options JSON (per-request tuning)"),
 ):
     """
     视频文件转写
@@ -371,59 +374,38 @@ async def transcribe_video(
     自动提取视频中的音频并转写。
     支持格式：mp4, avi, mkv, mov, webm 等
     """
-    temp_video = None
-    temp_audio = None
+    parsed_asr_options = None
+    try:
+        parsed_asr_options = parse_asr_options(asr_options)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     try:
-        # 保存视频文件
-        suffix = Path(file.filename).suffix if file.filename else ".mp4"
-        temp_video = tempfile.NamedTemporaryFile(
-            delete=False, suffix=suffix, dir=str(settings.uploads_dir)
-        )
-        content = await file.read()
-        temp_video.write(content)
-        temp_video.close()
+        preprocess_options = (parsed_asr_options or {}).get("preprocess")
+        async for audio_bytes in process_audio_file(file, preprocess_options=preprocess_options):
+            # 执行转写（与 /api/v1/transcribe 保持一致：支持长音频自动 chunking）。
+            result = await transcription_engine.transcribe_auto_async(
+                audio_bytes,
+                with_speaker=with_speaker,
+                apply_hotword=apply_hotword,
+                apply_llm=apply_llm,
+                llm_role=llm_role,
+                hotwords=hotwords,
+                asr_options=parsed_asr_options,
+            )
 
-        # 提取音频
-        temp_audio = tempfile.NamedTemporaryFile(
-            delete=False, suffix=".wav", dir=str(settings.uploads_dir)
-        )
-        temp_audio.close()
-        extract_audio_from_video(temp_video.name, temp_audio.name)
+            return {
+                "code": 0,
+                "text": result.get("text", ""),
+                "text_accu": result.get("text_accu"),
+                "sentences": result.get("sentences", []),
+                "speaker_turns": result.get("speaker_turns"),
+                "transcript": result.get("transcript"),
+                "raw_text": result.get("raw_text"),
+            }
 
-        # 读取音频
-        with open(temp_audio.name, "rb") as f:
-            audio_bytes = f.read()
-
-        # 执行转写
-        result = await transcription_engine.transcribe_async(
-            audio_bytes,
-            with_speaker=with_speaker,
-            apply_hotword=apply_hotword,
-            apply_llm=apply_llm,
-            llm_role=llm_role
-        )
-
-        return {
-            "code": 0,
-            "text": result.get("text", ""),
-            "text_accu": result.get("text_accu"),
-            "sentences": result.get("sentences", []),
-            "transcript": result.get("transcript"),
-            "raw_text": result.get("raw_text")
-        }
-
-    except ffmpeg.Error as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"视频处理失败: {e.stderr.decode() if e.stderr else str(e)}"
-        )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Video transcribe error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"转写失败: {str(e)}")
-
-    finally:
-        if temp_video and os.path.exists(temp_video.name):
-            os.unlink(temp_video.name)
-        if temp_audio and os.path.exists(temp_audio.name):
-            os.unlink(temp_audio.name)
