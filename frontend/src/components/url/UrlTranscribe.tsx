@@ -5,24 +5,16 @@ import { Link2, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Checkbox } from "@/components/ui/checkbox"
 import { FormField } from "@/components/ui/form-field"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export interface UrlTranscribeProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "onSubmit"> {
   /** 提交回调 */
-  onSubmit?: (url: string, options: UrlTranscribeOptions) => void
+  onSubmit?: (url: string) => void
   /** 是否加载中 */
   isLoading?: boolean
   /** 禁用状态 */
   disabled?: boolean
-}
-
-export interface UrlTranscribeOptions {
-  withSpeaker: boolean
-  applyHotword: boolean
-  applyLlm: boolean
 }
 
 function UrlTranscribe({
@@ -34,11 +26,6 @@ function UrlTranscribe({
 }: UrlTranscribeProps) {
   const [url, setUrl] = React.useState("")
   const [error, setError] = React.useState("")
-  const [options, setOptions] = React.useState<UrlTranscribeOptions>({
-    withSpeaker: false,
-    applyHotword: true,
-    applyLlm: false,
-  })
 
   const validateUrl = (value: string): boolean => {
     try {
@@ -74,7 +61,7 @@ function UrlTranscribe({
     if (!validateUrl(url)) {
       return
     }
-    onSubmit?.(url, options)
+    onSubmit?.(url)
   }
 
   const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -104,54 +91,6 @@ function UrlTranscribe({
           </div>
         </FormField>
 
-        {/* 转写选项 */}
-        <div className="space-y-3">
-          <Label className="text-sm font-medium">转写选项</Label>
-          <div className="flex flex-wrap gap-4">
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="url-speaker"
-                checked={options.withSpeaker}
-                onCheckedChange={(checked) =>
-                  setOptions((prev) => ({ ...prev, withSpeaker: checked === true }))
-                }
-                disabled={disabled || isLoading}
-              />
-              <Label htmlFor="url-speaker" className="text-sm font-normal">
-                说话人识别
-              </Label>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="url-hotword"
-                checked={options.applyHotword}
-                onCheckedChange={(checked) =>
-                  setOptions((prev) => ({ ...prev, applyHotword: checked === true }))
-                }
-                disabled={disabled || isLoading}
-              />
-              <Label htmlFor="url-hotword" className="text-sm font-normal">
-                热词纠错
-              </Label>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="url-llm"
-                checked={options.applyLlm}
-                onCheckedChange={(checked) =>
-                  setOptions((prev) => ({ ...prev, applyLlm: checked === true }))
-                }
-                disabled={disabled || isLoading}
-              />
-              <Label htmlFor="url-llm" className="text-sm font-normal">
-                LLM 润色
-              </Label>
-            </div>
-          </div>
-        </div>
-
         <Button type="submit" disabled={disabled || isLoading || !url.trim()}>
           {isLoading ? (
             <>
@@ -166,7 +105,7 @@ function UrlTranscribe({
 
       <Alert variant="info">
         <AlertDescription>
-          URL 转写为异步任务，提交后可在任务队列中查看进度和结果。
+          URL 转写为异步任务，提交后可在任务队列中查看进度和结果。转写选项（说话人/热词/LLM/高级参数）请在右侧设置。
         </AlertDescription>
       </Alert>
     </div>

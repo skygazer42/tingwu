@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { EmptyStateNoData } from "@/components/ui/empty-state"
-import type { TaskResultResponse } from "@/lib/api/types"
+import type { TranscribeResponse } from "@/lib/api/types"
 
 export interface Task {
   id: string
@@ -23,7 +23,7 @@ export interface Task {
   url?: string
   filename?: string
   createdAt: Date
-  result?: TaskResultResponse
+  result?: TranscribeResponse
   error?: string
   progress?: number
 }
@@ -80,9 +80,18 @@ function TaskManager({
   isRefreshing = false,
   ...props
 }: TaskManagerProps) {
+  const [nowMs, setNowMs] = React.useState(0)
+
   const processingCount = tasks.filter((t) => t.status === "processing").length
   const successCount = tasks.filter((t) => t.status === "success").length
   const errorCount = tasks.filter((t) => t.status === "error").length
+
+  React.useEffect(() => {
+    // Keep render pure; update time via state.
+    setNowMs(Date.now())
+    const id = window.setInterval(() => setNowMs(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [])
 
   const formatTime = (date: Date): string => {
     return date.toLocaleTimeString("zh-CN", {
@@ -93,7 +102,8 @@ function TaskManager({
   }
 
   const getElapsedTime = (date: Date): string => {
-    const seconds = Math.floor((Date.now() - date.getTime()) / 1000)
+    if (!nowMs) return ""
+    const seconds = Math.floor((nowMs - date.getTime()) / 1000)
     if (seconds < 60) return `${seconds}s`
     const minutes = Math.floor(seconds / 60)
     if (minutes < 60) return `${minutes}m`
@@ -176,7 +186,7 @@ function TaskManager({
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <span>{formatTime(task.createdAt)}</span>
                   {(task.status === "pending" || task.status === "processing") && (
-                    <span>({getElapsedTime(task.createdAt)})</span>
+                    <span>{getElapsedTime(task.createdAt) ? `(${getElapsedTime(task.createdAt)})` : null}</span>
                   )}
                   {task.progress !== undefined && task.status === "processing" && (
                     <span className="text-primary">{task.progress}%</span>

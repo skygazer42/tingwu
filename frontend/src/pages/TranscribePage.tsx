@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -10,10 +10,18 @@ import { TranscriptView } from '@/components/transcript'
 import { Timeline } from '@/components/timeline'
 import { HistoryList } from '@/components/history/HistoryList'
 import { UrlTranscribe } from '@/components/url/UrlTranscribe'
+import { TaskManager, type Task } from '@/components/task/TaskManager'
 import { useTranscriptionStore } from '@/stores'
 import { useHistoryStore } from '@/stores/historyStore'
-import { transcribeAudio, transcribeBatch } from '@/lib/api'
-import type { SentenceInfo } from '@/lib/api/types'
+import { getApiBaseUrl, getTaskResult, transcribeAudio, transcribeBatch, transcribeUrl } from '@/lib/api'
+import type { SentenceInfo, TranscribeResponse } from '@/lib/api/types'
+
+type UrlTask = Task & {
+  backendBaseUrl: string
+  savedToHistory?: boolean
+}
+
+const URL_TASK_MAX_POLL_MS = 10 * 60 * 1000
 
 export default function TranscribePage() {
   const {
@@ -34,6 +42,134 @@ export default function TranscribePage() {
 
   const [selectedIndex, setSelectedIndex] = useState<number>()
   const [inputMode, setInputMode] = useState<string>('file')
+  const [urlTasks, setUrlTasks] = useState<UrlTask[]>([])
+  const [isSubmittingUrl, setIsSubmittingUrl] = useState(false)
+
+  const urlPollingTimersRef = useRef<Record<string, number>>({})
+  const urlPollingStartedAtRef = useRef<Record<string, number>>({})
+
+  const stopUrlPolling = useCallback((taskId: string) => {
+    const timerId = urlPollingTimersRef.current[taskId]
+    if (timerId !== undefined) {
+      window.clearTimeout(timerId)
+      delete urlPollingTimersRef.current[taskId]
+    }
+    delete urlPollingStartedAtRef.current[taskId]
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      for (const timerId of Object.values(urlPollingTimersRef.current)) {
+        window.clearTimeout(timerId)
+      }
+      urlPollingTimersRef.current = {}
+      urlPollingStartedAtRef.current = {}
+    }
+  }, [])
+
+  const updateUrlTask = useCallback((taskId: string, updater: (task: UrlTask) => UrlTask) => {
+    setUrlTasks((prev) => prev.map((t) => (t.id === taskId ? updater(t) : t)))
+  }, [])
+
+  const extractFilenameFromUrl = useCallback((rawUrl: string): string | undefined => {
+    try {
+      const u = new URL(rawUrl)
+      const parts = u.pathname.split('/').filter(Boolean)
+      const last = parts[parts.length - 1]
+      if (!last) {
+        return undefined
+      }
+      return decodeURIComponent(last)
+    } catch {
+      return undefined
+    }
+  }, [])
+
+  const isTranscribeResponse = useCallback((value: unknown): value is TranscribeResponse => {
+    if (!value || typeof value !== 'object') return false
+    const obj = value as { sentences?: unknown; text?: unknown; code?: unknown }
+    return Array.isArray(obj.sentences) && typeof obj.text === 'string' && typeof obj.code === 'number'
+  }, [])
+
+  const startUrlPolling = useCallback(
+    (taskId: string, backendBaseUrl: string) => {
+      if (urlPollingTimersRef.current[taskId] !== undefined) {
+        return
+      }
+
+      urlPollingStartedAtRef.current[taskId] = Date.now()
+
+      const pollOnce = async () => {
+        const startedAt = urlPollingStartedAtRef.current[taskId] ?? Date.now()
+        if (Date.now() - startedAt > URL_TASK_MAX_POLL_MS) {
+          stopUrlPolling(taskId)
+          updateUrlTask(taskId, (t) => ({
+            ...t,
+            status: 'error',
+            error: '任务轮询超时，请重试',
+          }))
+          return
+        }
+
+        try {
+          const response = await getTaskResult(
+            taskId,
+            { delete: false },
+            { baseURL: backendBaseUrl }
+          )
+
+          if (response.status === 'pending' || response.status === 'processing') {
+            updateUrlTask(taskId, (t) => ({ ...t, status: response.status }))
+            const delayMs = response.status === 'processing' ? 2000 : 1000
+            urlPollingTimersRef.current[taskId] = window.setTimeout(pollOnce, delayMs)
+            return
+          }
+
+          if (response.status === 'success') {
+            stopUrlPolling(taskId)
+            const data = response.data
+            if (!isTranscribeResponse(data)) {
+              updateUrlTask(taskId, (t) => ({
+                ...t,
+                status: 'error',
+                error: '任务返回格式异常（缺少转写结果）',
+              }))
+              return
+            }
+
+            updateUrlTask(taskId, (t) => ({
+              ...t,
+              status: 'success',
+              result: data,
+            }))
+            toast.success('URL 转写完成')
+
+            // Best-effort cleanup: delete the completed task result from the backend cache.
+            void getTaskResult(taskId, { delete: true }, { baseURL: backendBaseUrl }).catch(() => {})
+            return
+          }
+
+          // error
+          stopUrlPolling(taskId)
+          updateUrlTask(taskId, (t) => ({
+            ...t,
+            status: 'error',
+            error: response.message || '任务失败',
+          }))
+        } catch (error) {
+          stopUrlPolling(taskId)
+          updateUrlTask(taskId, (t) => ({
+            ...t,
+            status: 'error',
+            error: error instanceof Error ? error.message : '请求失败',
+          }))
+        }
+      }
+
+      void pollOnce()
+    },
+    [isTranscribeResponse, stopUrlPolling, updateUrlTask]
+  )
 
   const handleTranscribe = async () => {
     if (files.length === 0) {
@@ -120,8 +256,102 @@ export default function TranscribePage() {
     }
   }
 
+  const urlTranscribeOptions = useMemo(() => {
+    return {
+      ...options,
+      hotwords: tempHotwords || undefined,
+      asrOptionsText: advancedAsrOptionsText.trim() ? advancedAsrOptionsText : undefined,
+    }
+  }, [advancedAsrOptionsText, options, tempHotwords])
+
   const handleUrlSubmit = async (url: string) => {
-    toast.info(`URL 转写已提交: ${url}`)
+    if (advancedAsrOptionsError) {
+      toast.error(`高级 asr_options JSON 无效：${advancedAsrOptionsError}`)
+      return
+    }
+
+    setIsSubmittingUrl(true)
+
+    const backendBaseUrl = getApiBaseUrl()
+    const filename = extractFilenameFromUrl(url)
+
+    try {
+      const response = await transcribeUrl(url, urlTranscribeOptions, { baseURL: backendBaseUrl })
+      const taskId = response.data?.task_id
+      if (!taskId) {
+        toast.error(response.message || 'URL 转写提交失败')
+        return
+      }
+
+      const task: UrlTask = {
+        id: taskId,
+        status: 'pending',
+        url,
+        filename: filename || taskId,
+        createdAt: new Date(),
+        backendBaseUrl,
+      }
+
+      setUrlTasks((prev) => [task, ...prev])
+      toast.success('URL 转写任务已提交')
+      startUrlPolling(taskId, backendBaseUrl)
+    } catch (error) {
+      console.error('URL transcription submit error:', error)
+      toast.error('URL 转写提交失败，请检查服务连接')
+    } finally {
+      setIsSubmittingUrl(false)
+    }
+  }
+
+  const handleViewUrlTaskResult = (task: UrlTask) => {
+    if (!task.result) {
+      toast.error('该任务暂无可查看的结果')
+      return
+    }
+
+    setResult(task.result)
+    setSelectedSentence(null)
+    setSelectedIndex(undefined)
+
+    if (!task.savedToHistory) {
+      addItem({
+        filename: task.filename || task.id,
+        text: task.result.text,
+        sentences: task.result.sentences,
+        rawText: task.result.raw_text,
+        options: {
+          withSpeaker: options.with_speaker,
+          applyHotword: options.apply_hotword,
+          applyLlm: options.apply_llm,
+          llmRole: options.llm_role,
+        },
+      })
+      updateUrlTask(task.id, (t) => ({ ...t, savedToHistory: true }))
+    }
+
+    toast.success('已加载 URL 任务结果')
+  }
+
+  const handleRemoveUrlTask = (taskId: string) => {
+    stopUrlPolling(taskId)
+    setUrlTasks((prev) => prev.filter((t) => t.id !== taskId))
+  }
+
+  const handleRefreshUrlTask = (taskId: string) => {
+    const task = urlTasks.find((t) => t.id === taskId)
+    if (!task) return
+
+    stopUrlPolling(taskId)
+    updateUrlTask(taskId, (t) => ({ ...t, status: 'pending', error: undefined }))
+    startUrlPolling(taskId, task.backendBaseUrl)
+  }
+
+  const handleRetryUrlTask = (task: UrlTask) => {
+    if (!task.url) {
+      toast.error('无法重试：缺少 URL')
+      return
+    }
+    void handleUrlSubmit(task.url)
   }
 
   const handleSelectSentence = (sentence: SentenceInfo, index: number) => {
@@ -195,7 +425,21 @@ export default function TranscribePage() {
                 </div>
               </>
             ) : (
-              <UrlTranscribe onSubmit={handleUrlSubmit} />
+              <div className="space-y-4">
+                <UrlTranscribe
+                  onSubmit={handleUrlSubmit}
+                  isLoading={isSubmittingUrl}
+                  disabled={isSubmittingUrl}
+                />
+
+                <TaskManager
+                  tasks={urlTasks}
+                  onViewResult={(t) => handleViewUrlTaskResult(t as UrlTask)}
+                  onRemove={handleRemoveUrlTask}
+                  onRetry={(t) => handleRetryUrlTask(t as UrlTask)}
+                  onRefresh={handleRefreshUrlTask}
+                />
+              </div>
             )}
           </CardContent>
         </Card>

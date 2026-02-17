@@ -45,34 +45,35 @@ export interface BatchTranscribeResponse {
 
 // URL 转写相关
 export interface UrlTranscribeRequest {
-  url: string
+  audio_url: string
   with_speaker?: boolean
   apply_hotword?: boolean
   apply_llm?: boolean
   llm_role?: string
   hotwords?: string
+  asr_options?: string
 }
 
 export interface UrlTranscribeResponse {
   code: number
-  task_id: string
+  status: 'success' | 'error'
   message: string
+  data?: {
+    task_id: string
+  }
 }
 
 // 异步任务相关
 export interface TaskResultRequest {
   task_id: string
-  wait?: boolean
-  timeout?: number
+  delete?: boolean
 }
 
 export interface TaskResultResponse {
   code: number
-  task_id: string
   status: 'pending' | 'processing' | 'success' | 'error'
-  result?: TranscribeResponse
-  error?: string
-  progress?: number
+  message: string
+  data?: { task_id: string } | TranscribeResponse
 }
 
 // 视频转写相关

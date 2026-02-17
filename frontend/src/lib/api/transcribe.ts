@@ -22,6 +22,23 @@ export interface TranscribeWithProgressOptions extends TranscribeOptions {
   asrOptionsText?: string
 }
 
+export interface UrlTranscribeOptions extends TranscribeOptions {
+  signal?: AbortSignal
+  /**
+   * Advanced per-request ASR tuning options (`asr_options`) as a JSON string.
+   * This is merged with UI-derived options like speaker label style.
+   */
+  asrOptionsText?: string
+}
+
+export interface ApiRequestOverrides {
+  /**
+   * Override `baseURL` per request so async tasks keep polling the backend they
+   * were created on (even if the user switches the global backend later).
+   */
+  baseURL?: string
+}
+
 function parseAsrOptionsText(text: string | undefined): Record<string, unknown> {
   const s = (text || '').trim()
   if (!s) {
@@ -173,19 +190,45 @@ export async function transcribeBatch(
  */
 export async function transcribeUrl(
   url: string,
-  options: TranscribeOptions = {}
+  options: UrlTranscribeOptions = {},
+  overrides: ApiRequestOverrides = {}
 ): Promise<UrlTranscribeResponse> {
-  const response = await apiClient.post<UrlTranscribeResponse>(
-    '/api/v1/trans/url',
-    {
-      url,
-      with_speaker: options.with_speaker,
-      apply_hotword: options.apply_hotword,
-      apply_llm: options.apply_llm,
-      llm_role: options.llm_role,
-      hotwords: options.hotwords,
-    }
-  )
+  const { signal, asrOptionsText, ...transcribeOptions } = options
+  const formData = new FormData()
+  formData.append('audio_url', url)
+
+  if (transcribeOptions.with_speaker !== undefined) {
+    formData.append('with_speaker', String(transcribeOptions.with_speaker))
+  }
+  if (transcribeOptions.apply_hotword !== undefined) {
+    formData.append('apply_hotword', String(transcribeOptions.apply_hotword))
+  }
+  if (transcribeOptions.apply_llm !== undefined) {
+    formData.append('apply_llm', String(transcribeOptions.apply_llm))
+  }
+  if (transcribeOptions.llm_role) {
+    formData.append('llm_role', transcribeOptions.llm_role)
+  }
+  if (transcribeOptions.hotwords) {
+    formData.append('hotwords', transcribeOptions.hotwords)
+  }
+
+  // Per-request ASR tuning (backend validates allowlisted options).
+  let asrOptions: Record<string, unknown> = parseAsrOptionsText(asrOptionsText)
+  if (transcribeOptions.with_speaker) {
+    asrOptions = mergeSpeakerLabelStyle(asrOptions, transcribeOptions.speaker_label_style || 'numeric')
+  }
+  if (Object.keys(asrOptions).length > 0) {
+    formData.append('asr_options', JSON.stringify(asrOptions))
+  }
+
+  const response = await apiClient.post<UrlTranscribeResponse>('/api/v1/trans/url', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+    signal,
+    baseURL: overrides.baseURL,
+  })
   return response.data
 }
 
@@ -194,17 +237,20 @@ export async function transcribeUrl(
  */
 export async function getTaskResult(
   taskId: string,
-  wait: boolean = false,
-  timeout: number = 30
+  options: { delete?: boolean; signal?: AbortSignal } = {},
+  overrides: ApiRequestOverrides = {}
 ): Promise<TaskResultResponse> {
-  const response = await apiClient.post<TaskResultResponse>(
-    '/api/v1/result',
-    {
-      task_id: taskId,
-      wait,
-      timeout,
-    }
-  )
+  const formData = new FormData()
+  formData.append('task_id', taskId)
+  formData.append('delete', String(options.delete ?? false))
+
+  const response = await apiClient.post<TaskResultResponse>('/api/v1/result', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+    signal: options.signal,
+    baseURL: overrides.baseURL,
+  })
   return response.data
 }
 
