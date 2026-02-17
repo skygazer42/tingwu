@@ -70,7 +70,7 @@ Expected: FAIL (Literal validation error / unknown backend).
 In `src/config.py`:
 - Add `"whisper"` to `asr_backend: Literal[...]`
 - Add whisper-specific config keys (env backed):
-  - `whisper_model: str = "small"`
+  - `whisper_model: str = "large"`
   - `whisper_language: str = "zh"` (optional; can be None to auto-detect)
   - `whisper_download_root: str = ""` (empty means default)
 
@@ -158,7 +158,7 @@ def test_whisper_backend_transcribe_pcm_bytes(monkeypatch):
 
     from src.models.backends.whisper import WhisperBackend
 
-    backend = WhisperBackend(model="small", device="cuda", language="zh")
+    backend = WhisperBackend(model="large", device="cuda", language="zh")
     backend.load()
 
     # 1s of silence PCM16LE @ 16kHz
@@ -354,7 +354,7 @@ Add a new service similar to `tingwu-pytorch`:
 - env:
   - `ASR_BACKEND=whisper`
   - `DEVICE=cuda`
-  - `WHISPER_MODEL=small` (or via env)
+  - `WHISPER_MODEL=large` (or via env)
 - add GPU device reservation like other GPU services
 
 **Step 2: Commit**
@@ -373,7 +373,7 @@ git commit -m "compose: add tingwu-whisper service"
 
 **Steps:**
 - Add `PORT_WHISPER=8105`
-- Add `WHISPER_MODEL=small`
+- Add `WHISPER_MODEL=large`
 - Update ASR_BACKEND comment list to include `whisper`
 
 **Commit:**
@@ -502,7 +502,7 @@ git commit -m "models: include whisper info for backend probing"
 
 **Steps:**
 - Add env vars:
-  - `WHISPER_MODEL=small`
+  - `WHISPER_MODEL=large`
   - `WHISPER_LANGUAGE=zh` (optional)
   - `WHISPER_DOWNLOAD_ROOT=/app/data/models/whisper` (optional)
 - Update README to mention model weights cache location and that volumes should persist `./data`.

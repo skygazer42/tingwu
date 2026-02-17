@@ -98,6 +98,7 @@ docker compose -f docker-compose.models.yml down
 
 提示：
 - 打开任意一个 TingWu 容器的前端页面后，可在「转写选项 → 后端」里切换 `Base URL`（例如 `http://localhost:8101` / `8102` / `8201`），前端会把请求发到你选择的端口。
+- Whisper 容器默认使用 `WHISPER_MODEL=large`（显存占用更高）；可通过环境变量覆盖（例如 `WHISPER_MODEL=small`）。模型权重会下载到 `WHISPER_DOWNLOAD_ROOT`（默认映射到宿主机 `./data/models/whisper`），不会把镜像撑大。
 - Qwen3-ASR **原生不支持说话人识别**。如果你希望在使用 Qwen3 转写时仍然输出 `说话人1/2/3...`，可以启用“fallback diarization”：
   - 同时启动 `--profile pytorch` 和 `--profile qwen3`
   - 并给 `tingwu-qwen3` 设置：

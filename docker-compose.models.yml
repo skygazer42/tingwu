@@ -141,7 +141,7 @@ services:
       DEVICE: ${WHISPER_DEVICE:-cuda}
       NGPU: ${WHISPER_NGPU:-1}
       NCPU: ${WHISPER_NCPU:-4}
-      WHISPER_MODEL: ${WHISPER_MODEL:-small}
+      WHISPER_MODEL: ${WHISPER_MODEL:-large}
       WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-zh}
       WHISPER_DOWNLOAD_ROOT: ${WHISPER_DOWNLOAD_ROOT:-/app/data/models/whisper}
     deploy:

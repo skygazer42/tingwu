@@ -68,7 +68,7 @@
 - `docker-compose.models.yml` 增加：
   - `tingwu-whisper`：端口默认 `8105`
   - `ASR_BACKEND=whisper`
-  - `WHISPER_MODEL`（默认如 `small`，可通过 env 覆盖）
+  - `WHISPER_MODEL`（默认如 `large`，可通过 env 覆盖）
   - GPU device reservation 与 `tingwu-pytorch` 一致
 - `.env.example` 增加 `PORT_WHISPER=8105`，并在注释中说明启用 profile。
 
@@ -100,4 +100,3 @@
 3. Compose 增加 `tingwu-whisper` + `.env.example` 增加端口
 4. 前端增加 Whisper 快速选择项
 5. 测试与文档对齐，提交到主分支
-

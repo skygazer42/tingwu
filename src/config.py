@@ -119,7 +119,7 @@ class Settings(BaseSettings):
     router_long_backend: Literal["qwen3", "vibevoice"] = "vibevoice"
 
     # Local Whisper backend (openai-whisper)
-    whisper_model: str = "small"
+    whisper_model: str = "large"
     whisper_language: Optional[str] = "zh"
     # Set to a persistent directory (e.g. /app/data/models/whisper) to cache weights.
     whisper_download_root: str = ""

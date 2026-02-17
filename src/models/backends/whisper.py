@@ -29,13 +29,13 @@ class WhisperBackend(ASRBackend):
     def __init__(
         self,
         *,
-        model: str = "small",
+        model: str = "large",
         device: str = "cuda",
         language: Optional[str] = "zh",
         download_root: str = "",
         **_kwargs: Any,
     ) -> None:
-        self.model = str(model or "small")
+        self.model = str(model or "large")
         self.device = str(device or "cuda")
         self.language = str(language) if language is not None else None
         self.download_root = str(download_root or "")
@@ -149,4 +149,3 @@ class WhisperBackend(ASRBackend):
             }
         )
         return base
-
