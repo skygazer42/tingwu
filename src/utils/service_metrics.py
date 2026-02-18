@@ -28,6 +28,12 @@ class ServiceMetrics:
     active_ws_connections: int = 0
     total_ws_connections: int = 0
 
+    # External diarizer (speaker diarization) stats
+    diarizer_requests_total: int = 0
+    diarizer_failures_total: int = 0
+    diarizer_latency_seconds_sum: float = 0.0
+    diarizer_latency_seconds_count: int = 0
+
     # 线程锁
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -67,6 +73,22 @@ class ServiceMetrics:
         with self._lock:
             self.active_ws_connections = max(0, self.active_ws_connections - 1)
 
+    def record_diarizer_call(self, *, success: bool, latency_s: float) -> None:
+        """Record an external diarizer call outcome + latency (best-effort)."""
+        try:
+            latency = float(latency_s)
+        except (TypeError, ValueError):
+            latency = 0.0
+        if latency < 0:
+            latency = 0.0
+
+        with self._lock:
+            self.diarizer_requests_total += 1
+            if not success:
+                self.diarizer_failures_total += 1
+            self.diarizer_latency_seconds_sum += latency
+            self.diarizer_latency_seconds_count += 1
+
     @property
     def uptime_seconds(self) -> float:
         """服务运行时间"""
@@ -92,6 +114,10 @@ class ServiceMetrics:
                 "avg_rtf": self.avg_rtf,
                 "active_ws_connections": self.active_ws_connections,
                 "total_ws_connections": self.total_ws_connections,
+                "diarizer_requests_total": self.diarizer_requests_total,
+                "diarizer_failures_total": self.diarizer_failures_total,
+                "diarizer_latency_seconds_sum": self.diarizer_latency_seconds_sum,
+                "diarizer_latency_seconds_count": self.diarizer_latency_seconds_count,
             }
 
     def to_prometheus(self) -> str:
@@ -133,6 +159,19 @@ class ServiceMetrics:
             "# HELP tingwu_websocket_connections_total Total WebSocket connections",
             "# TYPE tingwu_websocket_connections_total counter",
             f"tingwu_websocket_connections_total {stats['total_ws_connections']}",
+            "",
+            "# HELP tingwu_diarizer_requests_total Total external diarizer calls",
+            "# TYPE tingwu_diarizer_requests_total counter",
+            f"tingwu_diarizer_requests_total {stats['diarizer_requests_total']}",
+            "",
+            "# HELP tingwu_diarizer_failures_total Failed external diarizer calls",
+            "# TYPE tingwu_diarizer_failures_total counter",
+            f"tingwu_diarizer_failures_total {stats['diarizer_failures_total']}",
+            "",
+            "# HELP tingwu_diarizer_latency_seconds External diarizer latency summary",
+            "# TYPE tingwu_diarizer_latency_seconds summary",
+            f"tingwu_diarizer_latency_seconds_sum {stats['diarizer_latency_seconds_sum']:.4f}",
+            f"tingwu_diarizer_latency_seconds_count {stats['diarizer_latency_seconds_count']}",
         ]
         return "\n".join(lines)
 
@@ -145,6 +184,10 @@ class ServiceMetrics:
             self.total_audio_seconds = 0.0
             self.total_processing_seconds = 0.0
             self.total_ws_connections = 0
+            self.diarizer_requests_total = 0
+            self.diarizer_failures_total = 0
+            self.diarizer_latency_seconds_sum = 0.0
+            self.diarizer_latency_seconds_count = 0
 
 
 # 全局指标实例

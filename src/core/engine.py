@@ -25,6 +25,7 @@ from src.models.backends.remote_utils import pcm16le_to_wav_bytes
 from src.core.speaker.external_diarizer_client import fetch_diarizer_segments
 from src.core.speaker.external_diarizer_normalize import normalize_segments
 from src.core.speaker.external_diarizer_turns import segments_to_turns
+from src.utils.service_metrics import metrics
 
 logger = logging.getLogger(__name__)
 
@@ -829,6 +830,7 @@ class TranscriptionEngine:
         if with_speaker and bool(getattr(settings, "speaker_external_diarizer_enable", False)) and str(
             getattr(settings, "speaker_external_diarizer_base_url", "")
         ).strip():
+            diarizer_t0 = time.time()
             try:
                 speaker_options = self._get_request_speaker_options(asr_options)
                 coro = self._transcribe_with_external_diarizer(
@@ -848,9 +850,11 @@ class TranscriptionEngine:
                     out = asyncio.run(coro)
 
                 if out is not None:
+                    metrics.record_diarizer_call(success=True, latency_s=time.time() - diarizer_t0)
                     return out
                 raise ValueError("external diarizer returned no segments")
             except Exception as e:
+                metrics.record_diarizer_call(success=False, latency_s=time.time() - diarizer_t0)
                 backend_name = backend.get_info().get("name", "unknown")
                 logger.warning(f"External diarizer failed for backend {backend_name} (ignored): {e}")
 
@@ -1057,6 +1061,7 @@ class TranscriptionEngine:
         if with_speaker and bool(getattr(settings, "speaker_external_diarizer_enable", False)) and str(
             getattr(settings, "speaker_external_diarizer_base_url", "")
         ).strip():
+            diarizer_t0 = time.time()
             try:
                 speaker_options = self._get_request_speaker_options(asr_options)
                 out = await self._transcribe_with_external_diarizer(
@@ -1071,9 +1076,11 @@ class TranscriptionEngine:
                     llm_role=llm_role,
                 )
                 if out is not None:
+                    metrics.record_diarizer_call(success=True, latency_s=time.time() - diarizer_t0)
                     return out
                 raise ValueError("external diarizer returned no segments")
             except Exception as e:
+                metrics.record_diarizer_call(success=False, latency_s=time.time() - diarizer_t0)
                 backend_name = backend.get_info().get("name", "unknown")
                 logger.warning(f"External diarizer failed for backend {backend_name} (ignored): {e}")
 
