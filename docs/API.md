@@ -1,6 +1,6 @@
 # TingWu 语音转写服务 API 文档
 
-> 版本: 1.0.0 | 更新日期: 2026-02-17
+> 版本: 1.0.0 | 更新日期: 2026-02-18
 
 ## 目录
 
@@ -197,11 +197,26 @@ GET /api/v1/backend
     "supports_speaker": true,
     "supports_streaming": true,
     "supports_hotwords": true,
-    "supports_speaker_fallback": false
+    "supports_speaker_fallback": false,
+    "supports_speaker_external": false,
+    "speaker_strategy": "native"
   },
   "speaker_unsupported_behavior": "ignore"
 }
 ```
+
+**capabilities 说明**:
+
+- `supports_speaker`：当前后端原生是否支持说话人识别（由 backend 决定）
+- `supports_speaker_fallback`：是否启用了“fallback diarization”（辅助 TingWu 服务生成分段）
+- `supports_speaker_external`：是否启用了“external diarizer”（`tingwu-diarizer`，pyannote）
+- `speaker_strategy`：当请求 `with_speaker=true` 时，当前实例会采用的策略：
+  - `external`：强制 external diarizer（推荐会议场景，所有后端统一输出 `speaker_turns`）
+  - `native`：后端原生 speaker
+  - `fallback_diarization`：使用辅助 TingWu 服务生成分段，再按 turn 切片转写
+  - `fallback_backend`：回退到 PyTorch 后端执行 speaker（可能违背“端口=模型”预期）
+  - `ignore`：忽略 speaker（按 `with_speaker=false` 处理）
+  - `error`：直接报错（HTTP 400）
 
 ---
 
