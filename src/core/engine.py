@@ -823,6 +823,43 @@ class TranscriptionEngine:
 
         raw_result = None
 
+        # ------------------------------------------------------------
+        # Speaker external diarizer (forced, best-effort)
+        # ------------------------------------------------------------
+        if with_speaker and bool(getattr(settings, "speaker_external_diarizer_enable", False)) and str(
+            getattr(settings, "speaker_external_diarizer_base_url", "")
+        ).strip():
+            try:
+                speaker_options = self._get_request_speaker_options(asr_options)
+                coro = self._transcribe_with_external_diarizer(
+                    audio_input,
+                    backend=backend,
+                    injection_hotwords=injection_hotwords,
+                    post_processor=post_processor,
+                    effective_backend_kwargs=effective_backend_kwargs,
+                    speaker_options=speaker_options,
+                    apply_hotword=apply_hotword,
+                    apply_llm=apply_llm,
+                    llm_role=llm_role,
+                )
+                try:
+                    out = asyncio.get_event_loop().run_until_complete(coro)
+                except RuntimeError:
+                    out = asyncio.run(coro)
+
+                if out is not None:
+                    return out
+                raise ValueError("external diarizer returned no segments")
+            except Exception as e:
+                backend_name = backend.get_info().get("name", "unknown")
+                logger.warning(f"External diarizer failed for backend {backend_name} (ignored): {e}")
+
+                # Failure policy:
+                # - If backend supports native speaker, fall back to native path.
+                # - Otherwise, ignore with_speaker and return normal transcription.
+                if not getattr(backend, "supports_speaker", False):
+                    with_speaker = False
+
         # 检查说话人识别支持（按配置决定：报错 / 回退 / 忽略）
         if with_speaker and not backend.supports_speaker:
             behavior = settings.speaker_unsupported_behavior_effective
@@ -1664,9 +1701,13 @@ class TranscriptionEngine:
         # routing still benefits from chunking.
         backend = model_manager.backend
         if with_speaker and not backend.supports_speaker:
-            # If speaker fallback is enabled, keep with_speaker=true so `transcribe_async`
-            # can attempt best-effort diarization via the helper service.
-            if bool(getattr(settings, "speaker_fallback_diarization_enable", False)) and str(
+            # If external diarizer or speaker fallback is enabled, keep with_speaker=true so
+            # `transcribe_async` can attempt best-effort diarization before deciding to ignore.
+            if bool(getattr(settings, "speaker_external_diarizer_enable", False)) and str(
+                getattr(settings, "speaker_external_diarizer_base_url", "")
+            ).strip():
+                pass
+            elif bool(getattr(settings, "speaker_fallback_diarization_enable", False)) and str(
                 getattr(settings, "speaker_fallback_diarization_base_url", "")
             ).strip():
                 pass
