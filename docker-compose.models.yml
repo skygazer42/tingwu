@@ -58,6 +58,35 @@ x-tingwu-base: &tingwu-base
   logging: *tingwu-logging
 
 services:
+  # =====================
+  # External diarization
+  # =====================
+  tingwu-diarizer:
+    build:
+      context: .
+      dockerfile: Dockerfile.diarizer
+    image: tingwu-diarizer:latest
+    profiles: ["diarizer"]
+    container_name: tingwu-diarizer
+    ports:
+      - "${PORT_DIARIZER:-8300}:8000"
+    volumes:
+      - huggingface-cache:/root/.cache/huggingface
+    environment:
+      <<: *proxy-env
+      HF_TOKEN: ${HF_TOKEN:-}
+      DEVICE: ${DIARIZER_DEVICE:-cuda}
+      DIARIZER_MODEL: ${DIARIZER_MODEL:-pyannote/speaker-diarization-3.1}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    logging: *tingwu-logging
+
   # ======================
   # Local (in-process) ASR
   # ======================
