@@ -64,3 +64,46 @@ def test_update_hotwords_empty(client):
     assert response.status_code == 200
     data = response.json()
     assert data["count"] == 0
+
+
+def test_get_context_hotwords(client):
+    """测试获取上下文热词列表"""
+    response = client.get("/api/v1/hotwords/context")
+    assert response.status_code == 200
+    data = response.json()
+    assert "hotwords" in data
+    assert "count" in data
+
+
+def test_update_context_hotwords(client):
+    """测试更新上下文热词 (替换全部)"""
+    response = client.post(
+        "/api/v1/hotwords/context",
+        json={"hotwords": ["Qwen3-ASR", "VibeVoice-ASR", "GPT4"]},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["code"] == 0
+    assert data["count"] == 3
+
+
+def test_append_context_hotwords(client):
+    """测试追加上下文热词"""
+    client.post("/api/v1/hotwords/context", json={"hotwords": ["Claude"]})
+
+    response = client.post(
+        "/api/v1/hotwords/context/append",
+        json={"hotwords": ["FunASR", "Python"]},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["code"] == 0
+    assert data["count"] >= 2
+
+
+def test_reload_context_hotwords(client):
+    """测试从文件重新加载上下文热词"""
+    response = client.post("/api/v1/hotwords/context/reload")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["code"] == 0
