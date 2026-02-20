@@ -1,0 +1,265 @@
+# 常见问题排障（GPU / 下载 / 端口 / 说话人 / 性能）
+
+这份文档按“**最常见、最省时间**”的顺序列出排障步骤。  
+如果你是从 0 开始部署，请先看 `docs/DEPLOYMENT.md`；多模型端口与 profiles 见 `docs/MODELS.md`。
+
+---
+
+## 0) 先做 3 件事（80% 的问题都能定位）
+
+1) 看容器状态：
+
+```bash
+docker compose ps
+docker compose -f docker-compose.models.yml ps
+```
+
+2) 看日志（最重要）：
+
+```bash
+docker compose logs -f --tail 200
+docker compose -f docker-compose.models.yml logs -f --tail 200
+```
+
+3) 打健康检查：
+
+```bash
+curl -sS http://localhost:8000/health
+```
+
+---
+
+## 1) GPU 看不到 / 没有用上 GPU
+
+### 1.1 宿主机是否能看到 GPU？
+
+```bash
+nvidia-smi
+```
+
+如果宿主机没有 `nvidia-smi`，先装/修复驱动（各发行版流程不同，建议跟随官方指南）。
+
+### 1.2 Docker 容器是否能看到 GPU？
+
+```bash
+docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
+```
+
+- 能看到 GPU：说明容器 GPU 环境 OK
+- 看不到 GPU：需要安装/配置 NVIDIA Container Toolkit
+
+常见修复（Ubuntu/Debian 示例）：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y nvidia-container-toolkit
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+```
+
+### 1.3 Compose 启动了，但 GPU 还是没用上？
+
+检查你的 Docker/Compose 版本：
+
+```bash
+docker compose version
+docker info | rg -n "Runtimes|nvidia|Default Runtime" -n || true
+```
+
+> 说明：本项目的 compose 文件使用了 GPU 设备声明（`deploy.resources.reservations.devices`）。  
+> 如果你的 Compose 版本太旧，可能会忽略 GPU 声明，导致容器跑在 CPU 上。
+
+---
+
+## 2) 模型下载慢 / 下载失败（ModelScope/HuggingFace）
+
+### 2.1 先确认磁盘空间
+
+模型可能 1–10GB+，建议预留 **30GB** 以上。
+
+### 2.2 代理（Proxy）设置
+
+如果你访问 HuggingFace/ModelScope 需要代理：
+
+- 宿主机跑 Docker：需要把代理环境变量传进容器
+- 本项目支持在 `.env` 设置：
+  - `HTTP_PROXY/HTTPS_PROXY/ALL_PROXY/NO_PROXY`
+
+注意：
+
+- macOS/Windows Docker Desktop 的容器里 `127.0.0.1` 不是宿主机  
+  常用宿主机地址是 `host.docker.internal`
+
+### 2.3 HuggingFace Token（pyannote diarizer）
+
+如果你启用了 external diarizer（pyannote）并遇到 401/403：
+
+- 需要在 HuggingFace 准备 `HF_TOKEN`
+- 并确保对应模型（例如 `pyannote/speaker-diarization-3.1`）已申请访问权限
+
+启动时传入：
+
+```bash
+HF_TOKEN=... docker compose -f docker-compose.models.yml --profile diarizer up -d
+```
+
+### 2.4 如何确认缓存生效（不重复下载）
+
+`docker-compose.models.yml` 使用 volumes：
+
+- `model-cache`（ModelScope）
+- `huggingface-cache`（HuggingFace）
+
+查看：
+
+```bash
+docker volume ls | rg "model-cache|huggingface-cache|onnx-cache"
+```
+
+如果你删除了 volume，下次启动会重新下载。
+
+---
+
+## 3) 端口冲突（启动失败 / 访问不到）
+
+### 3.1 先确认你要访问哪个端口
+
+- 单容器默认：`http://localhost:8000`
+- 多模型：`8101/8102/8103/...`（见 `docs/MODELS.md` 的端口表）
+
+### 3.2 查看端口占用
+
+Linux：
+
+```bash
+ss -lntp | rg ":8000" || true
+```
+
+macOS：
+
+```bash
+lsof -nP -iTCP:8000 -sTCP:LISTEN || true
+```
+
+Windows（PowerShell）：
+
+```powershell
+netstat -ano | findstr :8000
+```
+
+### 3.3 修改端口
+
+推荐改 `.env`：
+
+- 单容器：`PORT=8000`
+- 多模型：`PORT_PYTORCH=8101`、`PORT_WHISPER=8105` 等
+
+改完后重启容器：
+
+```bash
+docker compose down
+docker compose up -d
+```
+
+---
+
+## 4) 有转写，但没有说话人（speaker_turns 为空 / with_speaker 无效）
+
+先确认你走的是哪条 speaker 路径（见 `docs/MODELS.md` 的“说话人策略”）。
+
+### 4.1 你用的是 Qwen3 / Whisper？
+
+这类后端通常 **不原生输出 speaker**。要得到 `说话人1/2/3`：
+
+- 推荐：启用 external diarizer（`tingwu-diarizer`）
+- 或者：启用 fallback diarization（用 `tingwu-pytorch` 辅助分段）
+
+### 4.2 external diarizer 启用了，但仍然没有 speaker？
+
+检查：
+
+1) diarizer 服务是否活着：`http://localhost:8300/health`
+2) TingWu 是否配置了：
+   - `SPEAKER_EXTERNAL_DIARIZER_ENABLE=true`
+   - `SPEAKER_EXTERNAL_DIARIZER_BASE_URL=http://tingwu-diarizer:8000`（容器内网络）或 `http://localhost:8300`（本地）  
+3) diarizer 是否因为 `HF_TOKEN`/权限/下载超时而失败（看 diarizer 日志）
+
+---
+
+## 5) UI 打不开 / 空白页 / 只有 API 没有前端
+
+### 5.1 Docker 方式（默认包含前端）
+
+官方 Dockerfile 会在构建时执行 `frontend/` 的 `npm run build` 并拷贝 `frontend/dist`。
+
+如果你自行改过镜像或跳过了前端构建，可能导致 UI 不存在。
+
+### 5.2 本地 Python 启动（需要手动 build 前端）
+
+本地 `python -m src.main` 会在 `frontend/dist` 存在时挂载它。否则只有 API：
+
+```bash
+cd frontend
+npm ci
+npm run build
+```
+
+然后再启动后端。
+
+---
+
+## 6) 性能 / 显存不够 / 容器频繁 OOM
+
+### 6.1 不要一次启动所有 GPU-heavy 后端
+
+即使你有 48GB 显存，同时启动：
+
+- Qwen3-ASR server
+- VibeVoice-ASR server
+- Whisper large
+- SenseVoice
+- PyTorch Paraformer
+
+也可能把显存挤爆或导致频繁抖动。
+
+建议做法：
+
+- 日常只开 1–2 个 GPU-heavy 后端
+- 用 `--profile all` 只作为“对比/探索”时使用
+
+### 6.2 调小远程 server 的显存占用
+
+在 `.env` 中：
+
+- `QWEN3_GPU_MEMORY_UTILIZATION`
+- `VIBEVOICE_GPU_MEMORY_UTILIZATION`
+
+### 6.3 Whisper 太吃显存？
+
+可以把 `WHISPER_MODEL` 改小（例如 `medium`/`small`），或者只在需要时启动 `--profile whisper`。
+
+---
+
+## 7) 本地一键会议栈（非 Docker）启动失败
+
+本地启动器：`scripts/local_stack.py`。
+
+常见问题：
+
+1) Python 环境不对（依赖缺失）  
+   - 主服务：`pip install -r requirements.txt`
+   - diarizer：建议独立 venv 安装 `pip install -r requirements.diarizer.txt`
+
+2) 端口被占用  
+   - 修改环境变量：`PORT_PYTORCH` / `DIARIZER_PORT`
+
+3) diarizer 下载/加载时间太长  
+   - 开启 warmup：`DIARIZER_WARMUP_ON_STARTUP=true`
+   - 提前准备 `HF_TOKEN`
+
+查看日志：
+
+```bash
+python scripts/local_stack.py logs --tail 200
+```
+
