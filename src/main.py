@@ -155,3 +155,22 @@ if FRONTEND_DIST.exists():
     # 静态资源
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
     logger.info(f"Frontend static files mounted from {FRONTEND_DIST}")
+
+
+if __name__ == "__main__":
+    import argparse
+
+    import uvicorn
+
+    parser = argparse.ArgumentParser(description="Run TingWu Speech Service (FastAPI)")
+    parser.add_argument("--host", default=str(settings.host), help="Bind host (default: settings.host)")
+    parser.add_argument("--port", type=int, default=int(settings.port), help="Bind port (default: settings.port)")
+    parser.add_argument("--reload", action="store_true", help="Enable auto-reload (dev only)")
+    args = parser.parse_args()
+
+    uvicorn.run(
+        "src.main:app",
+        host=str(args.host),
+        port=int(args.port),
+        reload=bool(args.reload),
+    )

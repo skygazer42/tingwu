@@ -90,6 +90,23 @@ VIBEVOICE_REPO_PATH=/path/to/VibeVoice \
   docker compose -f docker-compose.models.yml --profile router up -d
 ```
 
+一键启动（起一套“够用的全家桶”）
+
+如果你希望一次性把常用容器都拉起来（例如你有 48GB 显存，后续在前端选择 Base URL 使用），可以用 `all` profile：
+
+```bash
+# 包含：diarizer + pytorch + onnx + sensevoice + gguf + whisper + qwen3
+# 不包含：vibevoice/router（需要本地挂载 VibeVoice 仓库）
+docker compose -f docker-compose.models.yml --profile all up -d
+```
+
+如果你也要启动 VibeVoice/Router（需要提供本地 VibeVoice 仓库路径）：
+
+```bash
+VIBEVOICE_REPO_PATH=/path/to/VibeVoice \
+  docker compose -f docker-compose.models.yml --profile vibevoice --profile router up -d
+```
+
 停止：
 
 ```bash
@@ -117,6 +134,55 @@ docker compose -f docker-compose.models.yml down
     - `SPEAKER_FALLBACK_DIARIZATION_ENABLE=true`
     - `SPEAKER_FALLBACK_DIARIZATION_BASE_URL=http://tingwu-pytorch:8000`
   - 如果辅助服务不可用，会自动回退为普通转写（不会报错）。
+
+#### 不用 Docker：直接 Python 启动（本地/裸机）
+
+你也可以不使用 Docker，直接用 Python 运行 TingWu（适合裸机部署或你想自己管理进程/依赖的场景）。
+
+1) 安装依赖（主服务）
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+2) 启动主服务（例如 PyTorch 后端）
+
+```bash
+ASR_BACKEND=pytorch PORT=8101 python -m src.main
+```
+
+3) 启动 Whisper（可选，默认 large）
+
+```bash
+ASR_BACKEND=whisper \
+WHISPER_MODEL=large \
+WHISPER_DOWNLOAD_ROOT=./data/models/whisper \
+PORT=8105 \
+python -m src.main
+```
+
+4) 启动 external diarizer（可选，建议单独 venv）
+
+```bash
+python3 -m venv .venv-diarizer
+source .venv-diarizer/bin/activate
+pip install -r requirements.diarizer.txt
+
+HF_TOKEN=... DIARIZER_WARMUP_ON_STARTUP=true DIARIZER_PORT=8300 python -m src.diarizer_service.app
+```
+
+然后在你运行的 TingWu 服务里启用：
+
+```bash
+SPEAKER_EXTERNAL_DIARIZER_ENABLE=true \
+SPEAKER_EXTERNAL_DIARIZER_BASE_URL=http://localhost:8300 \
+ASR_BACKEND=qwen3 PORT=8201 \
+python -m src.main
+```
+
+> 前端说明：后端会自动挂载 `frontend/dist`（如果存在）。如果你需要 UI，先在 `frontend/` 下运行 `npm run build`。
 
 #### 请求级调参（`asr_options`，用于准确率 A/B）
 
