@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 import httpx
 
@@ -68,7 +68,8 @@ class Qwen3RemoteBackend(ASRBackend):
             {"type": "audio_url", "audio_url": {"url": data_url}},
         ]
         if hotwords:
-            user_content.append({"type": "text", "text": hotwords})
+            hint = _format_hotwords_hint(hotwords)
+            user_content.append({"type": "text", "text": hint or str(hotwords)})
         elif duration_s > 0:
             # A tiny hint can improve model behavior for some deployments.
             user_content.append({"type": "text", "text": f"Audio duration: {duration_s:.2f}s"})
@@ -90,6 +91,41 @@ class Qwen3RemoteBackend(ASRBackend):
             "text": text,
             "sentence_info": [],
         }
+
+
+def _parse_hotword_terms(hotwords: str) -> List[str]:
+    lines = [str(s).strip() for s in str(hotwords).splitlines()]
+    terms = [ln for ln in lines if ln and not ln.startswith("#")]
+
+    # De-dupe while preserving order.
+    seen = set()
+    out: List[str] = []
+    for t in terms:
+        if t in seen:
+            continue
+        seen.add(t)
+        out.append(t)
+    return out
+
+
+def _format_hotwords_hint(hotwords: str) -> str:
+    """Format hotwords into an instruction-like hint for chat-completions ASR models.
+
+    NOTE: For FunASR-like backends, hotwords are passed as a raw list. For the
+    chat-completions API, being explicit improves proper-noun recall.
+    """
+    terms = _parse_hotword_terms(hotwords)
+    if not terms:
+        return ""
+
+    # Keep it concise: very long hints can harm decoding.
+    terms = terms[:50]
+    if len(terms) <= 8:
+        joined = ", ".join(terms)
+        return f"专有名词/缩写提示（若出现请保持原样转写）：{joined}"
+
+    bullets = "\n".join(f"- {t}" for t in terms)
+    return "专有名词/缩写提示（若出现请保持原样转写）：\n" + bullets
 
 
 def _guess_mime_type(path: str | Path) -> str:

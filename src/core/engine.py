@@ -275,13 +275,34 @@ class TranscriptionEngine:
 
         # 截取最大数量并拼接
         max_count = settings.hotword_injection_max
-        # Prefer context hotwords for injection (更安全)，fallback to forced list.
-        hotwords_to_inject = (
-            self._context_hotwords_list[:max_count]
-            if self._context_hotwords_list
-            else self._hotwords_list[:max_count]
-        )
-        return "\n".join(hotwords_to_inject)
+        # Prefer context hotwords for injection (更安全), but also include the
+        # forced list as extra hints (injection is not replacement), to improve
+        # proper-noun recall in meetings.
+        merged: List[str] = []
+        seen = set()
+
+        def _add(hw: str) -> None:
+            s = str(hw).strip()
+            if not s:
+                return
+            if s in seen:
+                return
+            seen.add(s)
+            merged.append(s)
+
+        for hw in self._context_hotwords_list:
+            if len(merged) >= max_count:
+                break
+            _add(hw)
+
+        for hw in self._hotwords_list:
+            if len(merged) >= max_count:
+                break
+            _add(hw)
+
+        if not merged:
+            return None
+        return "\n".join(merged)
 
     def _get_request_post_processor(self, asr_options: Optional[Dict[str, Any]]) -> TextPostProcessor:
         """Build a request-scoped post-processor (does not mutate global settings)."""

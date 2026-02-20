@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 import numpy as np
 
@@ -103,8 +103,9 @@ class WhisperBackend(ASRBackend):
         if self.language:
             transcribe_kwargs["language"] = self.language
         if hotwords and str(hotwords).strip():
-            # Whisper uses "initial_prompt" as a context hint.
-            transcribe_kwargs["initial_prompt"] = str(hotwords).strip()
+            # Whisper uses "initial_prompt" as a context hint. Being explicit
+            # improves proper-noun recall for meetings.
+            transcribe_kwargs["initial_prompt"] = _format_initial_prompt(str(hotwords).strip())
 
         # Allow per-request overrides via `asr_options.backend.*`.
         for k, v in kwargs.items():
@@ -149,3 +150,31 @@ class WhisperBackend(ASRBackend):
             }
         )
         return base
+
+
+def _parse_hotword_terms(hotwords: str) -> List[str]:
+    lines = [str(s).strip() for s in str(hotwords).splitlines()]
+    terms = [ln for ln in lines if ln and not ln.startswith("#")]
+
+    seen = set()
+    out: List[str] = []
+    for t in terms:
+        if t in seen:
+            continue
+        seen.add(t)
+        out.append(t)
+    return out
+
+
+def _format_initial_prompt(hotwords: str) -> str:
+    terms = _parse_hotword_terms(hotwords)
+    if not terms:
+        return str(hotwords).strip()
+
+    # Keep the prompt short; Whisper's initial_prompt is best-effort only.
+    terms = terms[:50]
+    joined = ", ".join(terms[:12])
+    suffix = ""
+    if len(terms) > 12:
+        suffix = f"（另有{len(terms) - 12}个）"
+    return f"专有名词/缩写提示（若出现请保持原样）：{joined}{suffix}"
