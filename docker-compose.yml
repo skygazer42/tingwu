@@ -16,6 +16,10 @@ services:
       - HF_TOKEN=${HF_TOKEN:-}
       - DEVICE=${DIARIZER_DEVICE:-cuda}
       - DIARIZER_MODEL=${DIARIZER_MODEL:-pyannote/speaker-diarization-3.1}
+      - DIARIZER_WARMUP_ON_STARTUP=${DIARIZER_WARMUP_ON_STARTUP:-true}
+      - DIARIZER_NUM_SPEAKERS=${DIARIZER_NUM_SPEAKERS:-}
+      - DIARIZER_MIN_SPEAKERS=${DIARIZER_MIN_SPEAKERS:-}
+      - DIARIZER_MAX_SPEAKERS=${DIARIZER_MAX_SPEAKERS:-}
     deploy:
       resources:
         reservations:
