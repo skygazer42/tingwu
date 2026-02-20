@@ -6,21 +6,34 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Loader2, RefreshCw, Plus, Upload, Search } from 'lucide-react'
-import { getHotwords, updateHotwords, appendHotwords, reloadHotwords } from '@/lib/api'
+import {
+  appendContextHotwords,
+  appendHotwords,
+  getContextHotwords,
+  getHotwords,
+  reloadContextHotwords,
+  reloadHotwords,
+  updateContextHotwords,
+  updateHotwords,
+} from '@/lib/api'
 import { useBackendStore } from '@/stores'
 
 export default function HotwordsPage() {
   const queryClient = useQueryClient()
   const { baseUrl } = useBackendStore()
+  const [mode, setMode] = useState<'forced' | 'context'>('forced')
   const [draftText, setDraftText] = useState('')
   const [isDirty, setIsDirty] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
 
+  const isContextMode = mode === 'context'
+
   // 获取热词列表
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['hotwords', baseUrl],
-    queryFn: getHotwords,
+    queryKey: ['hotwords', mode, baseUrl],
+    queryFn: isContextMode ? getContextHotwords : getHotwords,
   })
 
   const serverText = (data?.hotwords ?? []).join('\n')
@@ -28,21 +41,23 @@ export default function HotwordsPage() {
 
   // 更新热词
   const updateMutation = useMutation({
-    mutationFn: (hotwords: string[]) => updateHotwords(hotwords),
+    mutationFn: (hotwords: string[]) =>
+      isContextMode ? updateContextHotwords(hotwords) : updateHotwords(hotwords),
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['hotwords'] })
       setIsDirty(false)
       setDraftText('')
-      toast.success(`热词更新成功，共 ${response.count} 个`)
+      toast.success(`${isContextMode ? '上下文热词' : '热词'}更新成功，共 ${response.count} 个`)
     },
     onError: () => {
-      toast.error('热词更新失败')
+      toast.error(`${isContextMode ? '上下文热词' : '热词'}更新失败`)
     },
   })
 
   // 追加热词
   const appendMutation = useMutation({
-    mutationFn: (hotwords: string[]) => appendHotwords(hotwords),
+    mutationFn: (hotwords: string[]) =>
+      isContextMode ? appendContextHotwords(hotwords) : appendHotwords(hotwords),
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['hotwords'] })
       setIsDirty(false)
@@ -50,13 +65,13 @@ export default function HotwordsPage() {
       toast.success(response.message)
     },
     onError: () => {
-      toast.error('追加热词失败')
+      toast.error(`追加${isContextMode ? '上下文热词' : '热词'}失败`)
     },
   })
 
   // 重载热词
   const reloadMutation = useMutation({
-    mutationFn: reloadHotwords,
+    mutationFn: isContextMode ? reloadContextHotwords : reloadHotwords,
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['hotwords'] })
       setIsDirty(false)
@@ -64,7 +79,7 @@ export default function HotwordsPage() {
       toast.success(response.message)
     },
     onError: () => {
-      toast.error('重载热词失败')
+      toast.error(`重载${isContextMode ? '上下文热词' : '热词'}失败`)
     },
   })
 
@@ -115,19 +130,56 @@ export default function HotwordsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">热词管理</h1>
-        <p className="text-muted-foreground">管理转写热词，提高专业术语识别准确率</p>
+        <p className="text-muted-foreground">
+          管理转写热词，提高专业术语识别准确率（强制纠错 / 上下文注入）
+        </p>
       </div>
+
+      <Tabs
+        value={mode}
+        onValueChange={(v) => {
+          const next = (v === 'context' ? 'context' : 'forced') as typeof mode
+          if (next !== mode) {
+            setMode(next)
+            setIsDirty(false)
+            setDraftText('')
+            setSearchTerm('')
+          }
+        }}
+      >
+        <TabsList>
+          <TabsTrigger value="forced">强制热词（纠错）</TabsTrigger>
+          <TabsTrigger value="context">上下文热词（注入提示）</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="forced">
+          <p className="text-sm text-muted-foreground">
+            强制热词会进入纠错链路（可能替换相似词）；适合少量高确定性术语。
+          </p>
+        </TabsContent>
+        <TabsContent value="context">
+          <p className="text-sm text-muted-foreground">
+            上下文热词仅用于提示/注入（不会强制替换）；更适合会议专有名词清单。
+          </p>
+        </TabsContent>
+      </Tabs>
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* 热词编辑 */}
         <Card>
           <CardHeader>
-            <CardTitle>热词编辑</CardTitle>
-            <CardDescription>每行一个热词，以 # 开头的行为注释</CardDescription>
+            <CardTitle>{isContextMode ? '上下文热词编辑' : '强制热词编辑'}</CardTitle>
+            <CardDescription>
+              每行一个热词，以 # 开头的行为注释
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <Textarea
-              placeholder="输入热词，每行一个...&#10;# 这是注释&#10;麦当劳&#10;肯德基&#10;Bilibili"
+              placeholder={
+                isContextMode
+                  ? "输入上下文热词，每行一个...&#10;# 这是注释&#10;Qwen3-ASR&#10;VibeVoice-ASR&#10;Kubernetes"
+                  : "输入热词，每行一个...&#10;# 这是注释&#10;麦当劳&#10;肯德基&#10;Bilibili"
+              }
               value={editText}
               onChange={(e) => {
                 if (!isDirty) setIsDirty(true)
@@ -143,7 +195,7 @@ export default function HotwordsPage() {
               <Button variant="outline" onClick={handleAppend} disabled={isPending}>
                 {appendMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 <Plus className="h-4 w-4 mr-2" />
-                追加热词
+                追加{isContextMode ? '上下文热词' : '热词'}
               </Button>
               <Button variant="outline" onClick={handleReload} disabled={isPending}>
                 {reloadMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -159,9 +211,9 @@ export default function HotwordsPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>当前热词库</CardTitle>
+                <CardTitle>当前{isContextMode ? '上下文热词库' : '热词库'}</CardTitle>
                 <CardDescription>
-                  共 <Badge variant="secondary">{data?.count ?? 0}</Badge> 个热词
+                  共 <Badge variant="secondary">{data?.count ?? 0}</Badge> 个{isContextMode ? '上下文热词' : '热词'}
                 </CardDescription>
               </div>
               <Button variant="ghost" size="icon" onClick={() => refetch()}>
@@ -174,7 +226,7 @@ export default function HotwordsPage() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="搜索热词..."
+                placeholder={`搜索${isContextMode ? '上下文热词' : '热词'}...`}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-9"
