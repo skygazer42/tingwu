@@ -173,6 +173,34 @@ pip install -r requirements.diarizer.txt
 HF_TOKEN=... DIARIZER_WARMUP_ON_STARTUP=true DIARIZER_PORT=8300 python -m src.diarizer_service.app
 ```
 
+5) 一键启动（会议模式：PyTorch + External Diarizer）
+
+如果你希望“不用记命令 + 后台常驻 + 支持 stop/status/logs”，可以使用本地启动器：
+
+```bash
+# 启动（后台）
+python scripts/local_stack.py start --mode meeting
+
+# 查看状态
+python scripts/local_stack.py status
+
+# 查看日志
+python scripts/local_stack.py logs --tail 200
+
+# 停止
+python scripts/local_stack.py stop
+```
+
+可选环境变量（推荐把主服务和 diarizer 放在不同 venv）：
+
+```bash
+TINGWU_PYTHON=./.venv/bin/python \
+DIARIZER_PYTHON=./.venv-diarizer/bin/python \
+python scripts/local_stack.py start --mode meeting
+```
+
+启动器会把 pid / log 写到：`./.run/local_stack/`。
+
 然后在你运行的 TingWu 服务里启用：
 
 ```bash
