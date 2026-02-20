@@ -51,7 +51,19 @@ def test_acronym_merge_basic():
     assert pp.process("U S A") == "USA"
 
 
+def test_acronym_merge_with_digits():
+    pp = _processor(acronym_merge_enable=True)
+
+    assert pp.process("Q W E N 3") == "QWEN3"
+    assert pp.process("H 2 O") == "H2O"
+    assert pp.process("R 2 D 2") == "R2D2"
+
+
+def test_acronym_merge_does_not_merge_digit_only_sequences():
+    pp = _processor(acronym_merge_enable=True)
+    assert pp.process("2 0 2 6") == "2 0 2 6"
+
+
 def test_acronym_merge_is_opt_in():
     pp = _processor(acronym_merge_enable=False)
     assert pp.process("A I 技术") == "A I 技术"
-

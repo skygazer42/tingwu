@@ -129,7 +129,17 @@ class TextPostProcessor:
         self.trash_punc_chars = settings.trash_punc_chars
 
         # Compiled regex for acronym merging.
-        self._acronym_seq_re = re.compile(r'(?<![A-Za-z])(?:[A-Za-z]\s+){1,}[A-Za-z](?![A-Za-z])')
+        #
+        # We merge single-char tokens separated by whitespace:
+        #   - Letters: "A I" -> "AI"
+        #   - Letters + digits: "Q W E N 3" -> "QWEN3", "H 2 O" -> "H2O"
+        #
+        # Guard rails:
+        # - Require the first token to be a letter (avoid merging digit-only sequences like "2 0 2 6").
+        # - Use word-boundary-style lookarounds to avoid merging inside longer alnum strings.
+        self._acronym_seq_re = re.compile(
+            r"(?<![A-Za-z0-9])(?:[A-Za-z](?:\s+[A-Za-z0-9]){1,})(?![A-Za-z0-9])"
+        )
 
         # Dictation spoken punctuation commands (conservative: only applied at start/end).
         self._spoken_punc_map = {
