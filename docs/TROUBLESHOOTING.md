@@ -157,6 +157,31 @@ docker pull hello-world
 
 > 如果你在公司/内网环境，需要代理或镜像源，请同时检查 `.env` 的 `HTTP_PROXY/HTTPS_PROXY` 与 `/etc/docker/daemon.json` 的 `registry-mirrors`。
 
+### 2.6 构建镜像时 apt-get update 报 “invalid signature”
+
+典型报错（在 `docker build` / `docker compose build` 阶段）：
+
+```text
+At least one invalid signature was encountered.
+E: The repository 'http://archive.ubuntu.com/ubuntu ... InRelease' is not signed.
+```
+
+常见原因：
+- 宿主机/内网对 **HTTP** 流量做了透明代理/缓存/重写，导致 `InRelease` 内容被污染（GPG 校验失败）
+
+建议修复（按优先级）：
+
+1) **优先使用 HTTPS 的 Ubuntu 源**（本项目的 `Dockerfile.gguf` 已在构建阶段强制把 apt 源从 `http://...` 改为 `https://...`）
+2) 如果你处于公司/内网环境，建议改为可用的 Ubuntu 镜像源（或使用公司内部 apt mirror）
+
+快速验证是否是基础镜像/网络问题：
+
+```bash
+docker run --rm pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime bash -lc 'apt-get update'
+```
+
+> 不推荐关闭签名校验（`--allow-unauthenticated` / `Acquire::AllowInsecureRepositories=true`），这会带来供应链风险。
+
 ---
 
 ## 3) 端口冲突（启动失败 / 访问不到）
