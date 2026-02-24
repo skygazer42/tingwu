@@ -4,8 +4,17 @@ FROM ${TORCH_BASE_IMAGE} AS python-builder
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
+# NOTE: Prefer HTTPS apt sources; fallback to mirrors.aliyun.com when apt update fails
+# (common on some intranet/transparent-proxy networks).
+RUN sed -i \
+      's|http://archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|https://security.ubuntu.com/ubuntu|g' \
+      /etc/apt/sources.list \
+    && (apt-get -o Acquire::Retries=3 update || ( \
+          echo "[apt] update failed; falling back to mirrors.aliyun.com" >&2; \
+          sed -i 's|https://archive.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g; s|https://security.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g; s|http://archive.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list; \
+          apt-get -o Acquire::Retries=3 update)) \
+    && apt-get install -y --no-install-recommends \
+      build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -25,10 +34,17 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    libsndfile1 \
-    curl \
+RUN sed -i \
+      's|http://archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|https://security.ubuntu.com/ubuntu|g' \
+      /etc/apt/sources.list \
+    && (apt-get -o Acquire::Retries=3 update || ( \
+          echo "[apt] update failed; falling back to mirrors.aliyun.com" >&2; \
+          sed -i 's|https://archive.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g; s|https://security.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g; s|http://archive.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list; \
+          apt-get -o Acquire::Retries=3 update)) \
+    && apt-get install -y --no-install-recommends \
+      ffmpeg \
+      libsndfile1 \
+      curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=python-builder /opt/conda /opt/conda

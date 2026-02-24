@@ -23,7 +23,24 @@ echo "[vibevoice-asr] VIBEVOICE_FFMPEG_MAX_CONCURRENCY=${FFMPEG_MAX_CONCURRENCY}
 
 export VIBEVOICE_FFMPEG_MAX_CONCURRENCY="${FFMPEG_MAX_CONCURRENCY}"
 
-apt-get update
+# NOTE: Some networks proxy/alter apt traffic and can break signature verification.
+# Prefer HTTPS sources; fallback to a mirror when update fails.
+if [ -f /etc/apt/sources.list ]; then
+  sed -i \
+    's|http://archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|https://security.ubuntu.com/ubuntu|g' \
+    /etc/apt/sources.list || true
+fi
+
+apt-get -o Acquire::Retries=3 update || {
+  echo "[apt] update failed; falling back to mirrors.aliyun.com" >&2
+  if [ -f /etc/apt/sources.list ]; then
+    sed -i \
+      's|https://archive.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g; s|https://security.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g; s|http://archive.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g' \
+      /etc/apt/sources.list || true
+  fi
+  apt-get -o Acquire::Retries=3 update
+}
+
 apt-get install -y ffmpeg libsndfile1
 
 # Install VibeVoice from mounted repo with vLLM support.
@@ -58,4 +75,3 @@ exec vllm serve "${MODEL_PATH}" \
   --tensor-parallel-size 1 \
   --allowed-local-media-path /app \
   --port "${PORT}"
-

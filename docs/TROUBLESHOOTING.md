@@ -171,8 +171,10 @@ E: The repository 'http://archive.ubuntu.com/ubuntu ... InRelease' is not signed
 
 建议修复（按优先级）：
 
-1) **优先使用 HTTPS 的 Ubuntu 源**（本项目的 `Dockerfile.gguf` 已在构建阶段强制把 apt 源从 `http://...` 改为 `https://...`）
-2) 如果你处于公司/内网环境，建议改为可用的 Ubuntu 镜像源（或使用公司内部 apt mirror）
+1) **优先使用 HTTPS 的 Ubuntu 源**（本项目的 Dockerfiles 已在构建阶段把 apt 源从 `http://...` 优先改为 `https://...`）
+2) 如果 `apt-get update` 仍失败：切换可用镜像源（或使用公司内部 apt mirror）
+   - 本项目在多数 Dockerfiles 中会在 `apt-get update` 失败时自动尝试回退到 `https://mirrors.aliyun.com/ubuntu`
+   - 如果你的网络环境对镜像源有强制要求，请改为你的内网 mirror
 
 快速验证是否是基础镜像/网络问题：
 
