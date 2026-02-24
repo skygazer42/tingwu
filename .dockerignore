@@ -1,0 +1,24 @@
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Node / frontend
+frontend/node_modules/
+frontend/.next/
+frontend/dist/
+
+# Local runtime data (mounted at runtime; do not send into docker build context)
+data/models/
+data/uploads/
+data/outputs/
+
+# Optional: local clone of VibeVoice (mounted into vLLM container, not needed for builds)
+VibeVoice/
+
+# Git
+.git/

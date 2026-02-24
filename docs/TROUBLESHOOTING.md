@@ -167,20 +167,24 @@ E: The repository 'http://archive.ubuntu.com/ubuntu ... InRelease' is not signed
 ```
 
 常见原因：
-- 宿主机/内网对 **HTTP** 流量做了透明代理/缓存/重写，导致 `InRelease` 内容被污染（GPG 校验失败）
+- 宿主机/内网对 apt 流量（HTTP/HTTPS）做了透明代理/缓存/重写，导致 `InRelease` 内容被污染（GPG 校验失败）
+- DNS/网络不稳定导致 `InRelease` 下载不完整（也可能触发签名校验失败）
 
 建议修复（按优先级）：
 
-1) **优先使用 HTTPS 的 Ubuntu 源**（本项目的 Dockerfiles 已在构建阶段把 apt 源从 `http://...` 优先改为 `https://...`）
-2) 如果 `apt-get update` 仍失败：切换可用镜像源（或使用公司内部 apt mirror）
-   - 本项目在多数 Dockerfiles 中会在 `apt-get update` 失败时自动尝试回退到 `https://mirrors.aliyun.com/ubuntu`
-   - 如果你的网络环境对镜像源有强制要求，请改为你的内网 mirror
-
-快速验证是否是基础镜像/网络问题：
+1) 先确认是不是“构建环境/网络”问题（而不是项目本身）：
 
 ```bash
 docker run --rm pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime bash -lc 'apt-get update'
 ```
+
+2) 如果你处于公司/内网环境：尝试切换可用镜像源（或使用公司内部 apt mirror）
+   - 本项目 Dockerfiles 会在 `apt-get update` 失败时自动回退到 `http://mirrors.aliyun.com/ubuntu`
+   - 如需强制使用你们的内网 mirror，建议直接修改 `/etc/apt/sources.list`（或在 Dockerfile 中替换）
+
+3) 如果你看到 `Sending build context to Docker daemon ...` 非常大（例如几 GB）
+   - 通常是把本地模型文件（`./data/models/`）打包进了构建上下文
+   - 建议在仓库根目录添加 `.dockerignore` 并忽略 `data/models/`（本项目已提供默认 `.dockerignore`）
 
 > 不推荐关闭签名校验（`--allow-unauthenticated` / `Acquire::AllowInsecureRepositories=true`），这会带来供应链风险。
 

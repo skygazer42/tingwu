@@ -4,14 +4,12 @@ FROM ${TORCH_BASE_IMAGE} AS python-builder
 
 WORKDIR /app
 
-# NOTE: Prefer HTTPS apt sources; fallback to mirrors.aliyun.com when apt update fails
-# (common on some intranet/transparent-proxy networks).
-RUN sed -i \
-      's|http://archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|https://security.ubuntu.com/ubuntu|g' \
-      /etc/apt/sources.list \
-    && (apt-get -o Acquire::Retries=3 update || ( \
-          echo "[apt] update failed; falling back to mirrors.aliyun.com" >&2; \
-          sed -i 's|https://archive.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g; s|https://security.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g; s|http://archive.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list; \
+# NOTE: Some networks/proxies can corrupt apt's signed InRelease files and cause
+# "invalid signature" errors. We try the image default sources first, then fall
+# back to a commonly available mirror over HTTP.
+RUN (apt-get -o Acquire::Retries=3 update || ( \
+          echo "[apt] update failed; falling back to http://mirrors.aliyun.com/ubuntu" >&2; \
+          sed -i 's|https://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g; s|https://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g; s|http://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g; s|https://mirrors.aliyun.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list; \
           apt-get -o Acquire::Retries=3 update)) \
     && apt-get install -y --no-install-recommends \
       build-essential \
@@ -34,12 +32,9 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
-RUN sed -i \
-      's|http://archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|https://security.ubuntu.com/ubuntu|g' \
-      /etc/apt/sources.list \
-    && (apt-get -o Acquire::Retries=3 update || ( \
-          echo "[apt] update failed; falling back to mirrors.aliyun.com" >&2; \
-          sed -i 's|https://archive.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g; s|https://security.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g; s|http://archive.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|https://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list; \
+RUN (apt-get -o Acquire::Retries=3 update || ( \
+          echo "[apt] update failed; falling back to http://mirrors.aliyun.com/ubuntu" >&2; \
+          sed -i 's|https://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g; s|https://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g; s|http://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g; s|https://mirrors.aliyun.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list; \
           apt-get -o Acquire::Retries=3 update)) \
     && apt-get install -y --no-install-recommends \
       ffmpeg \
