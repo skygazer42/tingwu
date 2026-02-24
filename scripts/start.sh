@@ -33,12 +33,25 @@ case $MODE in
     models)
         PROFILE=${2:-}
         if [ -z "$PROFILE" ]; then
-            echo "Usage: $0 models <pytorch|onnx|sensevoice|gguf|whisper|diarizer|qwen3|vibevoice|router|all>"
+            echo "Usage: $0 models <pytorch|onnx|sensevoice|gguf|whisper|diarizer|qwen3|vibevoice|router|all|all-lite>"
             echo "Tip: vibevoice/router need VIBEVOICE_REPO_PATH=/path/to/VibeVoice"
+            echo "Tip: all-lite = all without GGUF (no extra local model artifacts required)"
             exit 1
         fi
         echo "Starting model profile: ${PROFILE}"
-        docker compose -f docker-compose.models.yml --profile "${PROFILE}" up -d
+
+        if [ "${PROFILE}" = "all-lite" ]; then
+            docker compose -f docker-compose.models.yml \
+              --profile diarizer \
+              --profile pytorch \
+              --profile onnx \
+              --profile sensevoice \
+              --profile whisper \
+              --profile qwen3 \
+              up -d
+        else
+            docker compose -f docker-compose.models.yml --profile "${PROFILE}" up -d
+        fi
 
         # Best-effort: print the expected endpoint for the selected profile.
         case "$PROFILE" in
@@ -57,13 +70,15 @@ case $MODE in
             echo ""
             echo "Service URL: http://localhost:${MODEL_PORT}"
             echo "API Docs: http://localhost:${MODEL_PORT}/docs"
-        elif [ "${PROFILE}" = "all" ]; then
+        elif [ "${PROFILE}" = "all" ] || [ "${PROFILE}" = "all-lite" ]; then
             echo ""
-            echo "Started multiple services (profile=all). Common ports:"
+            echo "Started multiple services (profile=${PROFILE}). Common ports:"
             echo "  - PyTorch:   http://localhost:${PORT_PYTORCH:-8101}"
             echo "  - ONNX:      http://localhost:${PORT_ONNX:-8102}"
             echo "  - SenseVoice:http://localhost:${PORT_SENSEVOICE:-8103}"
-            echo "  - GGUF:      http://localhost:${PORT_GGUF:-8104}"
+            if [ "${PROFILE}" = "all" ]; then
+                echo "  - GGUF:      http://localhost:${PORT_GGUF:-8104}"
+            fi
             echo "  - Whisper:   http://localhost:${PORT_WHISPER:-8105}"
             echo "  - Qwen3:     http://localhost:${PORT_TINGWU_QWEN3:-8201}"
             echo "  - Diarizer:  http://localhost:${PORT_DIARIZER:-8300}"

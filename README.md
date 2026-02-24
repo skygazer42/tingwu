@@ -69,9 +69,19 @@ docker-compose up -d
 - 端口不同，但 API 路径一致，方便做 A/B 对比和基准测试
 - 默认不启动任何模型，按需用 profile 启动
 
+推荐用一键脚本（内部就是 `docker compose`，只是帮你少记命令）：
+
+```bash
+./scripts/start.sh models <profile>
+```
+
 示例（按需启动）：
 
 ```bash
+# 0) External diarizer (pyannote) -> http://localhost:8300
+# 可选：让任意后端（包括 Whisper/Qwen3）也能输出 speaker_turns
+docker compose -f docker-compose.models.yml --profile diarizer up -d
+
 # 1) PyTorch Paraformer (GPU) -> http://localhost:8101
 docker compose -f docker-compose.models.yml --profile pytorch up -d
 
@@ -81,25 +91,46 @@ docker compose -f docker-compose.models.yml --profile onnx up -d
 # 3) SenseVoice (GPU) -> http://localhost:8103
 docker compose -f docker-compose.models.yml --profile sensevoice up -d
 
-# 4) Whisper (GPU) -> http://localhost:8105
+# 4) GGUF (CPU) -> http://localhost:8104
+# 注意：GGUF 需要你提前把模型文件放到 ./data/models/（见 docker-compose.models.yml 里的 GGUF_* 环境变量）
+docker compose -f docker-compose.models.yml --profile gguf up -d
+
+# 5) Whisper (GPU) -> http://localhost:8105
 docker compose -f docker-compose.models.yml --profile whisper up -d
 
-# 5) Qwen3-ASR (远程模型容器 + TingWu 包装) -> http://localhost:8201
+# 6) Qwen3-ASR (远程模型容器 + TingWu 包装) -> http://localhost:8201
 docker compose -f docker-compose.models.yml --profile qwen3 up -d
 
-# 6) VibeVoice-ASR (远程模型容器 + TingWu 包装) -> http://localhost:8202
+# 7) VibeVoice-ASR (远程模型容器 + TingWu 包装) -> http://localhost:8202
 # 需要提供本地 VibeVoice 仓库路径（包含 vllm_plugin）
 VIBEVOICE_REPO_PATH=/path/to/VibeVoice \
   docker compose -f docker-compose.models.yml --profile vibevoice up -d
 
-# 7) Router (Qwen3 + VibeVoice 自动路由) -> http://localhost:8200
+# 8) Router (Qwen3 + VibeVoice 自动路由) -> http://localhost:8200
 VIBEVOICE_REPO_PATH=/path/to/VibeVoice \
   docker compose -f docker-compose.models.yml --profile router up -d
 ```
 
 一键启动（起一套“够用的全家桶”）
 
-如果你希望一次性把常用容器都拉起来（例如你有 48GB 显存，后续在前端选择 Base URL 使用），可以用 `all` profile：
+如果你希望一次性把常用容器都拉起来（例如你有 48GB 显存，后续在前端选择 Base URL 使用），推荐用 `all-lite`（不包含 GGUF，更不容易因为缺模型文件而启动失败）：
+
+```bash
+# 推荐：不含 GGUF，不需要额外准备本地模型文件
+./scripts/start.sh models all-lite
+
+# 等价命令（不通过脚本也行）
+docker compose -f docker-compose.models.yml \
+  --profile diarizer \
+  --profile pytorch \
+  --profile onnx \
+  --profile sensevoice \
+  --profile whisper \
+  --profile qwen3 \
+  up -d
+```
+
+如果你已经准备好了 GGUF 模型文件（`./data/models/` 下的 encoder/ctc/decoder/tokens + llama.cpp 动态库），再用 `all` profile：
 
 ```bash
 # 包含：diarizer + pytorch + onnx + sensevoice + gguf + whisper + qwen3
@@ -219,6 +250,31 @@ python -m src.main
 
 > 前端说明：后端会自动挂载 `frontend/dist`（如果存在）。如果你需要 UI，先在 `frontend/` 下运行 `npm run build`。
 
+#### 本地：预下载模型（可选，但推荐）
+
+本地跑 TingWu 时（`python -m src.main` / `uvicorn src.main:app`），一次只会启动 **一个** 后端实例，模型也只会按需下载当前 `ASR_BACKEND` 需要的权重。
+
+如果你希望“先把模型下好”，避免第一次请求卡住（尤其是开发环境频繁重启），可以用预下载脚本：
+
+```bash
+# 默认：预下载 pytorch + sensevoice + whisper
+python scripts/prefetch_models.py
+
+# 预下载全部本地后端（含 onnx；需要你已安装 funasr-onnx + onnxruntime）
+python scripts/prefetch_models.py --backends all
+
+# 预下载 PyTorch 的 speaker 相关权重（会议场景常用）
+python scripts/prefetch_models.py --backends pytorch --with-speaker
+
+# 纯 CPU 机器建议显式指定
+python scripts/prefetch_models.py --device cpu --backends pytorch onnx sensevoice whisper
+```
+
+说明：
+- `onnx` 后端需要额外安装：`pip install funasr-onnx onnxruntime`（或 `onnxruntime-gpu`）
+- 远程后端（`qwen3/vibevoice/router`）的权重下载发生在各自的 vLLM/Qwen 服务里，不在本脚本范围内
+- 本地 pip 安装的缓存目录通常在：`~/.cache/modelscope`、`~/.cache/huggingface`（不同后端可能略有差异）
+
 #### 请求级调参（`asr_options`，用于准确率 A/B）
 
 在 `POST /api/v1/transcribe`（以及 batch）里可以额外传一个表单字段 `asr_options`（JSON 字符串），用于**单次请求**调参：
@@ -336,6 +392,13 @@ npm run dev
 
 - 后端 API: http://localhost:8000
 - 前端界面: http://localhost:5173
+
+补充说明：
+- 这套“本地开发”默认只会拉取/加载当前后端实例需要的模型（由 `.env` 的 `ASR_BACKEND` 决定），**不会自动拉取全部模型**。
+- 如果你想在本机提前把常用模型下载好，推荐先跑一次：`python scripts/prefetch_models.py`（见上面的「本地：预下载模型」）。
+- Vite 开发代理默认转发到 `http://localhost:8000`（见 `frontend/vite.config.ts`）。如果你把后端跑在别的端口：
+  - 推荐：启动前端时设置 `VITE_API_BASE_URL=http://localhost:<port>`，或
+  - 直接改 `frontend/vite.config.ts` 的 proxy 目标端口。
 
 ### 方式三：脚本部署
 
