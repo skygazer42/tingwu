@@ -99,6 +99,7 @@ docker compose -f docker-compose.models.yml --profile gguf up -d
 docker compose -f docker-compose.models.yml --profile whisper up -d
 
 # 6) Qwen3-ASR (远程模型容器 + TingWu 包装) -> http://localhost:8201
+# 首次启动会 pull 外部镜像，并在容器内从 HuggingFace 下载权重（缓存到 huggingface-cache volume）
 docker compose -f docker-compose.models.yml --profile qwen3 up -d
 
 # 7) VibeVoice-ASR (远程模型容器 + TingWu 包装) -> http://localhost:8202
@@ -109,6 +110,66 @@ VIBEVOICE_REPO_PATH=/path/to/VibeVoice \
 # 8) Router (Qwen3 + VibeVoice 自动路由) -> http://localhost:8200
 VIBEVOICE_REPO_PATH=/path/to/VibeVoice \
   docker compose -f docker-compose.models.yml --profile router up -d
+```
+
+##### VibeVoice / Router 额外准备（一次性）
+
+`vibevoice-asr` 使用官方 `vllm/vllm-openai` 镜像启动 vLLM 服务，但它需要把 **VibeVoice 仓库挂载进容器**（用于安装 `vllm_plugin` 等 Python 包）。
+
+1) 准备本地 VibeVoice 仓库（推荐 clone 到项目根目录，这样不需要额外设置 `VIBEVOICE_REPO_PATH`）：
+
+```bash
+cd TingWu
+git clone https://github.com/microsoft/VibeVoice.git ./VibeVoice
+```
+
+2) （可选）提前拉取 vLLM 镜像（网络慢时建议）：
+
+```bash
+docker pull vllm/vllm-openai:latest
+```
+
+3) 启动（两种方式二选一）：
+
+```bash
+# 方式 A：你已 clone 到 ./VibeVoice（推荐）
+docker compose -f docker-compose.models.yml --profile vibevoice up -d
+
+# 方式 B：VibeVoice 在其它目录（建议用绝对路径）
+VIBEVOICE_REPO_PATH=/abs/path/to/VibeVoice \
+  docker compose -f docker-compose.models.yml --profile vibevoice up -d
+```
+
+说明：
+- 首次启动会在 `vibevoice-asr` 容器内 **自动从 HuggingFace 下载模型权重**（默认 `microsoft/VibeVoice-ASR`），缓存到 `huggingface-cache` volume；后续重启不会重复下载。
+- 观察启动/下载进度：`docker logs -f vibevoice-asr`
+- wrapper 入口：`http://localhost:8202`（TingWu API/UI）；vLLM server 端口：`http://localhost:9002`（仅调试用）
+
+##### GGUF 额外准备（离线/本地模型文件）
+
+GGUF 后端 **不会自动下载模型**（不是标准 HF/ModelScope 模型仓库结构，需要你准备本地文件 + llama.cpp 动态库）。
+
+默认期望你在项目根目录准备：
+
+```text
+./data/models/
+  Fun-ASR-Nano-Encoder-Adaptor.fp32.onnx
+  Fun-ASR-Nano-CTC.int8.onnx
+  Fun-ASR-Nano-Decoder.q8_0.gguf
+  tokens.txt
+  bin/
+    libllama.so
+    libggml.so
+    libggml-base.so
+```
+
+这些路径都可以通过 `docker-compose.models.yml` 的 `GGUF_*` 环境变量覆盖。
+
+启动后看日志确认是否加载成功：
+
+```bash
+docker compose -f docker-compose.models.yml --profile gguf up -d
+docker logs -f tingwu-gguf
 ```
 
 一键启动（起一套“够用的全家桶”）

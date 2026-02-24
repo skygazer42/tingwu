@@ -118,6 +118,45 @@ docker volume ls | rg "model-cache|huggingface-cache|onnx-cache"
 
 如果你删除了 volume，下次启动会重新下载。
 
+### 2.5 Docker Hub 拉镜像失败（registry-1.docker.io / 127.0.0.53:53）
+
+典型报错：
+
+```text
+Get "https://registry-1.docker.io/v2/": dial tcp: lookup registry-1.docker.io on 127.0.0.53:53: server misbehaving
+```
+
+这类问题通常是宿主机 DNS（`systemd-resolved` stub）异常，导致 `docker pull` 解析失败。
+
+先确认是否能解析：
+
+```bash
+getent hosts registry-1.docker.io || echo "DNS lookup failed"
+```
+
+常见修复（Ubuntu/Debian + systemd 示例）：
+
+1) 重启解析服务：
+
+```bash
+sudo systemctl restart systemd-resolved
+```
+
+2) 如果仍失败，给 Docker daemon 指定 DNS（注意：不要覆盖你已有的 `runtimes.nvidia` 配置）：
+
+```bash
+sudo cat /etc/docker/daemon.json
+sudo systemctl restart docker
+```
+
+3) 再试：
+
+```bash
+docker pull hello-world
+```
+
+> 如果你在公司/内网环境，需要代理或镜像源，请同时检查 `.env` 的 `HTTP_PROXY/HTTPS_PROXY` 与 `/etc/docker/daemon.json` 的 `registry-mirrors`。
+
 ---
 
 ## 3) 端口冲突（启动失败 / 访问不到）
@@ -262,4 +301,3 @@ npm run build
 ```bash
 python scripts/local_stack.py logs --tail 200
 ```
-

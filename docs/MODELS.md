@@ -68,15 +68,34 @@ docker compose -f docker-compose.models.yml --profile all up -d
 
 ### 2.3 启动 VibeVoice / Router（需要挂载 VibeVoice repo）
 
-`vibevoice-asr` 容器需要挂载本地 VibeVoice 仓库目录（包含 `vllm_plugin` 等）。准备好后：
+`vibevoice-asr` 容器使用官方 `vllm/vllm-openai` 镜像启动 vLLM 服务，但它需要挂载本地 VibeVoice 仓库目录（包含 `vllm_plugin` 等 Python 包）。建议一次性准备好：
 
 ```bash
+cd TingWu
+git clone https://github.com/microsoft/VibeVoice.git ./VibeVoice
+
+# 可选：提前 pull 镜像（网络慢时建议）
+docker pull vllm/vllm-openai:latest
+```
+
+启动（两种方式二选一）：
+
+```bash
+# 方式 A：你已 clone 到 ./VibeVoice（推荐；不需要额外设置 VIBEVOICE_REPO_PATH）
+docker compose -f docker-compose.models.yml --profile vibevoice up -d
+
+# 方式 B：VibeVoice 在其它目录（建议用绝对路径）
 VIBEVOICE_REPO_PATH=/path/to/VibeVoice \
   docker compose -f docker-compose.models.yml --profile vibevoice up -d
 
 VIBEVOICE_REPO_PATH=/path/to/VibeVoice \
   docker compose -f docker-compose.models.yml --profile router up -d
 ```
+
+说明：
+- 首次启动会在 `vibevoice-asr` 容器内自动从 HuggingFace 下载模型权重（默认 `microsoft/VibeVoice-ASR`），缓存到 `huggingface-cache` volume。
+- 观察启动/下载进度：`docker logs -f vibevoice-asr`
+- wrapper 入口：`http://localhost:8202`（TingWu API/UI）；vLLM server 端口：`http://localhost:9002`（仅调试用）
 
 停止：
 
@@ -85,6 +104,33 @@ docker compose -f docker-compose.models.yml down
 ```
 
 ---
+
+### 2.4 启动 GGUF（需要本地模型文件）
+
+GGUF 后端适合“离线/本地 CPU”使用，但它 **不会自动下载模型**（不是标准 HF/ModelScope 模型仓库结构，需要你准备本地文件 + llama.cpp 动态库）。
+
+默认期望你在项目根目录准备：
+
+```text
+./data/models/
+  Fun-ASR-Nano-Encoder-Adaptor.fp32.onnx
+  Fun-ASR-Nano-CTC.int8.onnx
+  Fun-ASR-Nano-Decoder.q8_0.gguf
+  tokens.txt
+  bin/
+    libllama.so
+    libggml.so
+    libggml-base.so
+```
+
+这些路径都可以通过 `docker-compose.models.yml` 的 `GGUF_*` 环境变量覆盖。
+
+启动：
+
+```bash
+docker compose -f docker-compose.models.yml --profile gguf up -d
+docker logs -f tingwu-gguf
+```
 
 ## 3) 端口对照表（默认值）
 
@@ -235,4 +281,3 @@ Qwen3-ASR、Whisper 等常见转写服务 **不原生输出 speaker**。
 1) **稳/省心**：`pytorch` + `diarizer`（external diarizer）  
 2) **多模型对比**：`--profile all` + 前端切 `Base URL`  
 3) **远程 ASR + speaker**：`qwen3` + `diarizer`（或 `qwen3` + fallback diarization）
-
