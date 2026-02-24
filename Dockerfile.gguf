@@ -3,10 +3,13 @@
 #
 # 说明:
 # - GGUF 后端需要额外依赖: onnxruntime + gguf
-# - 还需要你把模型文件和 llama.cpp 动态库放到 ./data/models (并挂载到容器 /app/data/models)
+# - 需要你把模型文件放到 ./data/models (并挂载到容器 /app/data/models)
+# - llama.cpp 动态库会在构建镜像时编译并内置到 /app/llama_cpp/lib（默认 GGUF_LIB_DIR 指向该目录）
 # - 该镜像以 API 为主，不强制构建前端（可按需加上 frontend-builder 阶段）
 
 ARG TORCH_BASE_IMAGE=pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime
+ARG LLAMA_CPP_REPO=https://github.com/ggml-org/llama.cpp.git
+ARG LLAMA_CPP_REF=
 
 FROM ${TORCH_BASE_IMAGE} AS python-builder
 
@@ -26,6 +29,38 @@ RUN pip install --no-cache-dir \
     onnxruntime>=1.16.0 \
     gguf>=0.10.0
 
+FROM ${TORCH_BASE_IMAGE} AS llama-builder
+
+ARG LLAMA_CPP_REPO
+ARG LLAMA_CPP_REF
+
+WORKDIR /tmp
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    cmake \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth 1 "${LLAMA_CPP_REPO}" llama.cpp
+
+WORKDIR /tmp/llama.cpp
+
+# Optional: pin to a specific tag/branch for reproducible builds.
+# Example: --build-arg LLAMA_CPP_REF=b3932
+RUN if [ -n "${LLAMA_CPP_REF}" ]; then \
+      git fetch --depth 1 origin "${LLAMA_CPP_REF}" && git checkout FETCH_HEAD; \
+    fi
+
+RUN cmake -S . -B build \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_SHARED_LIBS=ON \
+    && cmake --build build -j"$(nproc)" \
+    && mkdir -p /out \
+    && find build -name 'libllama.so' -exec cp -v {} /out/ \; \
+    && find build -name 'libggml.so' -exec cp -v {} /out/ \; \
+    && find build -name 'libggml-base.so' -exec cp -v {} /out/ \;
+
 FROM ${TORCH_BASE_IMAGE}
 
 ENV PYTHONUNBUFFERED=1 \
@@ -33,6 +68,11 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     # 默认使用 gguf 后端
     ASR_BACKEND=gguf
+
+# Default llama.cpp lib dir for the GGUF backend. Note that /app/data is
+# usually bind-mounted from the host, so keep libs outside /app/data.
+ENV GGUF_LIB_DIR=/app/llama_cpp/lib \
+    LD_LIBRARY_PATH=/app/llama_cpp/lib:${LD_LIBRARY_PATH}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
@@ -49,6 +89,9 @@ WORKDIR /app
 COPY src/ ./src/
 COPY configs/ ./configs/
 COPY data/hotwords/ ./data/hotwords/
+
+RUN mkdir -p /app/llama_cpp/lib
+COPY --from=llama-builder /out/ /app/llama_cpp/lib/
 
 RUN mkdir -p data/models data/uploads data/outputs
 

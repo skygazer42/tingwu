@@ -107,7 +107,7 @@ docker compose -f docker-compose.models.yml down
 
 ### 2.4 启动 GGUF（需要本地模型文件）
 
-GGUF 后端适合“离线/本地 CPU”使用，但它 **不会自动下载模型**（不是标准 HF/ModelScope 模型仓库结构，需要你准备本地文件 + llama.cpp 动态库）。
+GGUF 后端适合“离线/本地 CPU”使用，但它 **不会自动下载模型**（不是标准 HF/ModelScope 模型仓库结构，需要你准备本地文件）。
 
 默认期望你在项目根目录准备：
 
@@ -117,18 +117,18 @@ GGUF 后端适合“离线/本地 CPU”使用，但它 **不会自动下载模�
   Fun-ASR-Nano-CTC.int8.onnx
   Fun-ASR-Nano-Decoder.q8_0.gguf
   tokens.txt
-  bin/
-    libllama.so
-    libggml.so
-    libggml-base.so
 ```
+
+说明：
+- Docker 的 GGUF 镜像会在构建时编译并内置 llama.cpp 动态库到 `/app/llama_cpp/lib`（默认 `GGUF_LIB_DIR` 指向该目录），所以 **不需要**你在宿主机额外放 `.so`。
+- 如果你希望使用自定义的 llama.cpp 编译产物，可设置 `GGUF_LIB_DIR=/app/data/models/bin` 并把 `.so` 放到宿主机 `./data/models/bin/`。
 
 这些路径都可以通过 `docker-compose.models.yml` 的 `GGUF_*` 环境变量覆盖。
 
 启动：
 
 ```bash
-docker compose -f docker-compose.models.yml --profile gguf up -d
+docker compose -f docker-compose.models.yml --profile gguf up -d --build
 docker logs -f tingwu-gguf
 ```
 

@@ -92,7 +92,8 @@ docker compose -f docker-compose.models.yml --profile onnx up -d
 docker compose -f docker-compose.models.yml --profile sensevoice up -d
 
 # 4) GGUF (CPU) -> http://localhost:8104
-# 注意：GGUF 需要你提前把模型文件放到 ./data/models/（见 docker-compose.models.yml 里的 GGUF_* 环境变量）
+# 注意：GGUF 需要你提前把模型文件放到 ./data/models/（encoder/ctc/decoder/tokens；见 docker-compose.models.yml 里的 GGUF_* 环境变量）
+# llama.cpp 动态库已内置到 GGUF 镜像中（默认 GGUF_LIB_DIR=/app/llama_cpp/lib），无需额外准备
 docker compose -f docker-compose.models.yml --profile gguf up -d
 
 # 5) Whisper (GPU) -> http://localhost:8105
@@ -147,7 +148,7 @@ VIBEVOICE_REPO_PATH=/abs/path/to/VibeVoice \
 
 ##### GGUF 额外准备（离线/本地模型文件）
 
-GGUF 后端 **不会自动下载模型**（不是标准 HF/ModelScope 模型仓库结构，需要你准备本地文件 + llama.cpp 动态库）。
+GGUF 后端 **不会自动下载模型**（不是标准 HF/ModelScope 模型仓库结构，需要你准备本地文件）。
 
 默认期望你在项目根目录准备：
 
@@ -157,18 +158,18 @@ GGUF 后端 **不会自动下载模型**（不是标准 HF/ModelScope 模型仓�
   Fun-ASR-Nano-CTC.int8.onnx
   Fun-ASR-Nano-Decoder.q8_0.gguf
   tokens.txt
-  bin/
-    libllama.so
-    libggml.so
-    libggml-base.so
 ```
+
+说明：
+- Docker 的 GGUF 镜像会在构建时编译并内置 llama.cpp 动态库到 `/app/llama_cpp/lib`（默认 `GGUF_LIB_DIR` 指向该目录），所以 **不需要**你在宿主机额外放 `.so`。
+- 如果你希望使用自定义的 llama.cpp 编译产物，可设置 `GGUF_LIB_DIR=/app/data/models/bin` 并把 `.so` 放到宿主机 `./data/models/bin/`（容器会通过 bind mount 读取）。
 
 这些路径都可以通过 `docker-compose.models.yml` 的 `GGUF_*` 环境变量覆盖。
 
 启动后看日志确认是否加载成功：
 
 ```bash
-docker compose -f docker-compose.models.yml --profile gguf up -d
+docker compose -f docker-compose.models.yml --profile gguf up -d --build
 docker logs -f tingwu-gguf
 ```
 

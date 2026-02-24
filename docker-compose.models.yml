@@ -215,7 +215,10 @@ services:
       GGUF_CTC_PATH: ${GGUF_CTC_PATH:-/app/data/models/Fun-ASR-Nano-CTC.int8.onnx}
       GGUF_DECODER_PATH: ${GGUF_DECODER_PATH:-/app/data/models/Fun-ASR-Nano-Decoder.q8_0.gguf}
       GGUF_TOKENS_PATH: ${GGUF_TOKENS_PATH:-/app/data/models/tokens.txt}
-      GGUF_LIB_DIR: ${GGUF_LIB_DIR:-/app/data/models/bin}
+      # Default llama.cpp shared libs are bundled into the GGUF image under /app/llama_cpp/lib.
+      # If you prefer to provide your own builds, set GGUF_LIB_DIR=/app/data/models/bin and
+      # put the .so files into ./data/models/bin on the host.
+      GGUF_LIB_DIR: ${GGUF_LIB_DIR:-/app/llama_cpp/lib}
 
   # ==========================
   # Remote ASR (OpenAI-style)
