@@ -19,6 +19,7 @@ data/outputs/
 
 # Optional: local clone of VibeVoice (mounted into vLLM container, not needed for builds)
 VibeVoice/
+third_party/VibeVoice/
 
 # Git
 .git/

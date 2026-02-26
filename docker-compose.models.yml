@@ -280,8 +280,8 @@ services:
     ipc: host
     volumes:
       # Mount a local VibeVoice repo directory that contains vllm_plugin + python package.
-      # Required only if you start the vibevoice/router profiles.
-      - ${VIBEVOICE_REPO_PATH:-./VibeVoice}:/app
+      # Default: use the vendored snapshot under ./third_party/VibeVoice.
+      - ${VIBEVOICE_REPO_PATH:-./third_party/VibeVoice}:/app
       - huggingface-cache:/root/.cache/huggingface
       - ./docker/remote-asr/start_vibevoice_asr.sh:/start_vibevoice_asr.sh:ro
     entrypoint: ["bash", "-lc"]
@@ -292,6 +292,9 @@ services:
     shm_size: "4gb"
     environment:
       <<: *proxy-env
+      # Optional: use a PyPI mirror inside the container for installing the mounted VibeVoice package.
+      PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}
+      PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-mirrors.aliyun.com}
       VIBEVOICE_MODEL_ID: ${VIBEVOICE_MODEL_ID:-microsoft/VibeVoice-ASR}
       PORT: 8000
       SERVED_MODEL_NAME: ${VIBEVOICE_SERVED_MODEL_NAME:-vibevoice}

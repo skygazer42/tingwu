@@ -66,30 +66,35 @@ docker compose -f docker-compose.models.yml --profile qwen3 up -d
 docker compose -f docker-compose.models.yml --profile all up -d
 ```
 
-### 2.3 启动 VibeVoice / Router（需要挂载 VibeVoice repo）
+### 2.3 启动 VibeVoice / Router（vLLM 远程模型容器 + TingWu 包装）
 
-`vibevoice-asr` 容器使用官方 `vllm/vllm-openai` 镜像启动 vLLM 服务，但它需要挂载本地 VibeVoice 仓库目录（包含 `vllm_plugin` 等 Python 包）。建议一次性准备好：
+`vibevoice-asr` 容器使用官方 `vllm/vllm-openai` 镜像启动 vLLM 服务，需要一份包含 `vllm_plugin` 的 VibeVoice 源码目录。
+
+为了适配“内网/离线环境 GitHub 不可用”的情况，本仓库默认已内置一份 **最小 VibeVoice 源码快照**：
+
+- `./third_party/VibeVoice/`（包含 `pyproject.toml`、`vibevoice/`、`vllm_plugin/`）
+- `docker-compose.models.yml` 默认会把它挂载到容器 `/app`
+
+因此 **一般不需要你再手动 `git clone`**。
+
+启动：
 
 ```bash
-cd TingWu
-git clone https://github.com/microsoft/VibeVoice.git ./VibeVoice
-
 # 可选：提前 pull 镜像（网络慢时建议）
 docker pull vllm/vllm-openai:latest
+
+# 启动 VibeVoice wrapper（会同时启动 vibevoice-asr）
+docker compose -f docker-compose.models.yml --profile vibevoice up -d
 ```
 
-启动（两种方式二选一）：
+如果你希望使用最新版/官方仓库（或你们内网 mirror），可以自行准备并覆盖挂载路径：
 
 ```bash
-# 方式 A：你已 clone 到 ./VibeVoice（推荐；不需要额外设置 VIBEVOICE_REPO_PATH）
-docker compose -f docker-compose.models.yml --profile vibevoice up -d
+# 推荐：浅克隆 + 强制 HTTP/1.1（可规避 GitHub HTTP/2 early EOF）
+git -c http.version=HTTP/1.1 clone --depth 1 https://github.com/microsoft/VibeVoice.git ./VibeVoice
 
-# 方式 B：VibeVoice 在其它目录（建议用绝对路径）
-VIBEVOICE_REPO_PATH=/path/to/VibeVoice \
+VIBEVOICE_REPO_PATH=./VibeVoice \
   docker compose -f docker-compose.models.yml --profile vibevoice up -d
-
-VIBEVOICE_REPO_PATH=/path/to/VibeVoice \
-  docker compose -f docker-compose.models.yml --profile router up -d
 ```
 
 说明：
