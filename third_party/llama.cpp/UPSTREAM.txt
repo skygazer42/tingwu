@@ -1,0 +1,8 @@
+Upstream: https://github.com/ggml-org/llama.cpp
+Commit: 2943210c1eaa3fc9cc4f0ac6f0ae5f2ce2350f98
+Vendored at: 2026-02-26
+
+Notes:
+- This is a minimal source snapshot used to build llama.cpp shared libraries
+  for TingWu's GGUF backend (libllama.so / libggml.so / libggml-base.so).
+- The upstream project is MIT licensed; see LICENSE in this directory.

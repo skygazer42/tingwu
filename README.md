@@ -104,24 +104,31 @@ docker compose -f docker-compose.models.yml --profile whisper up -d
 docker compose -f docker-compose.models.yml --profile qwen3 up -d
 
 # 7) VibeVoice-ASR (远程模型容器 + TingWu 包装) -> http://localhost:8202
-# 需要提供本地 VibeVoice 仓库路径（包含 vllm_plugin）
-VIBEVOICE_REPO_PATH=/path/to/VibeVoice \
-  docker compose -f docker-compose.models.yml --profile vibevoice up -d
+# 默认使用 ./third_party/VibeVoice（仓库内置最小快照）；如需自定义路径再设置 VIBEVOICE_REPO_PATH
+docker compose -f docker-compose.models.yml --profile vibevoice up -d
 
 # 8) Router (Qwen3 + VibeVoice 自动路由) -> http://localhost:8200
-VIBEVOICE_REPO_PATH=/path/to/VibeVoice \
-  docker compose -f docker-compose.models.yml --profile router up -d
+docker compose -f docker-compose.models.yml --profile router up -d
 ```
 
 ##### VibeVoice / Router 额外准备（一次性）
 
 `vibevoice-asr` 使用官方 `vllm/vllm-openai` 镜像启动 vLLM 服务，但它需要把 **VibeVoice 仓库挂载进容器**（用于安装 `vllm_plugin` 等 Python 包）。
 
-1) 准备本地 VibeVoice 仓库（推荐 clone 到项目根目录，这样不需要额外设置 `VIBEVOICE_REPO_PATH`）：
+默认情况下，本仓库已内置一份 **最小 VibeVoice 源码快照**：
+
+- `./third_party/VibeVoice/`（包含 `pyproject.toml`、`vibevoice/`、`vllm_plugin/`）
+- `docker-compose.models.yml` 默认会把它挂载到容器 `/app`
+
+因此一般不需要你再手动 `git clone`。
+
+如果你希望使用最新版/官方仓库（或你们内网 mirror），可自行准备并覆盖挂载路径：
 
 ```bash
 cd TingWu
-git clone https://github.com/microsoft/VibeVoice.git ./VibeVoice
+
+# 推荐：浅克隆 + 强制 HTTP/1.1（可规避 GitHub HTTP/2 early EOF）
+git -c http.version=HTTP/1.1 clone --depth 1 https://github.com/microsoft/VibeVoice.git ./VibeVoice
 ```
 
 2) （可选）提前拉取 vLLM 镜像（网络慢时建议）：
@@ -133,7 +140,7 @@ docker pull vllm/vllm-openai:latest
 3) 启动（两种方式二选一）：
 
 ```bash
-# 方式 A：你已 clone 到 ./VibeVoice（推荐）
+# 方式 A：使用仓库内置快照（默认；不需要额外设置 VIBEVOICE_REPO_PATH）
 docker compose -f docker-compose.models.yml --profile vibevoice up -d
 
 # 方式 B：VibeVoice 在其它目录（建议用绝对路径）
@@ -162,6 +169,7 @@ GGUF 后端 **不会自动下载模型**（不是标准 HF/ModelScope 模型仓�
 
 说明：
 - Docker 的 GGUF 镜像会在构建时编译并内置 llama.cpp 动态库到 `/app/llama_cpp/lib`（默认 `GGUF_LIB_DIR` 指向该目录），所以 **不需要**你在宿主机额外放 `.so`。
+- 本仓库已内置 `llama.cpp` 源码快照（`./third_party/llama.cpp/`），因此构建 GGUF 镜像时通常不需要容器内访问 GitHub/Gitee；如需升级/替换版本，仍可按 `docs/TROUBLESHOOTING.md` 的 2.7 指引覆盖该目录或设置 `LLAMA_CPP_REPO`。
 - 如果你希望使用自定义的 llama.cpp 编译产物，可设置 `GGUF_LIB_DIR=/app/data/models/bin` 并把 `.so` 放到宿主机 `./data/models/bin/`（容器会通过 bind mount 读取）。
 
 这些路径都可以通过 `docker-compose.models.yml` 的 `GGUF_*` 环境变量覆盖。
@@ -192,19 +200,18 @@ docker compose -f docker-compose.models.yml \
   up -d
 ```
 
-如果你已经准备好了 GGUF 模型文件（`./data/models/` 下的 encoder/ctc/decoder/tokens + llama.cpp 动态库），再用 `all` profile：
+如果你已经准备好了 GGUF 模型文件（`./data/models/` 下的 encoder/ctc/decoder/tokens），再用 `all` profile：
 
 ```bash
 # 包含：diarizer + pytorch + onnx + sensevoice + gguf + whisper + qwen3
-# 不包含：vibevoice/router（需要本地挂载 VibeVoice 仓库）
+# 不包含：vibevoice/router（可选；默认使用 ./third_party/VibeVoice，无需手动 clone）
 docker compose -f docker-compose.models.yml --profile all up -d
 ```
 
-如果你也要启动 VibeVoice/Router（需要提供本地 VibeVoice 仓库路径）：
+如果你也要启动 VibeVoice/Router（可选；默认不需要额外准备，如需自定义 repo 再设置 `VIBEVOICE_REPO_PATH`）：
 
 ```bash
-VIBEVOICE_REPO_PATH=/path/to/VibeVoice \
-  docker compose -f docker-compose.models.yml --profile vibevoice --profile router up -d
+docker compose -f docker-compose.models.yml --profile vibevoice --profile router up -d
 ```
 
 停止：
@@ -492,15 +499,18 @@ qwen-asr-serve Qwen/Qwen3-ASR-1.7B --host 0.0.0.0 --port 9001 --gpu-memory-utili
 2) 启动 VibeVoice-ASR（官方 vLLM Docker，自动从 HuggingFace 下载）
 
 ```bash
-git clone https://github.com/microsoft/VibeVoice.git
-cd VibeVoice
+cd TingWu
+
+# 默认：使用仓库内置的最小 VibeVoice 快照（避免 GitHub clone 失败）
+# 如需使用最新版/官方仓库，可自行 clone（建议强制 HTTP/1.1）并把挂载路径改成你的目录：
+#   git -c http.version=HTTP/1.1 clone --depth 1 https://github.com/microsoft/VibeVoice.git ./VibeVoice
 
 docker run -d --gpus all --name vibevoice-vllm \
   --ipc=host \
   -p 9002:8000 \
   -e VIBEVOICE_FFMPEG_MAX_CONCURRENCY=64 \
   -e PYTORCH_ALLOC_CONF=expandable_segments:True \
-  -v $(pwd):/app \
+  -v $(pwd)/third_party/VibeVoice:/app \
   -w /app \
   --entrypoint bash \
   vllm/vllm-openai:latest \
