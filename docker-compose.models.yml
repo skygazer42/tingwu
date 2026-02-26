@@ -127,6 +127,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.onnx
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-mirrors.aliyun.com}
     image: tingwu-speech-service:onnx
     profiles: ["onnx", "all"]
     container_name: tingwu-onnx
@@ -204,6 +207,8 @@ services:
         #   LLAMA_CPP_REPO=https://gitee.com/mirrors/llama.cpp.git docker compose ... build tingwu-gguf
         LLAMA_CPP_REPO: ${LLAMA_CPP_REPO:-https://github.com/ggml-org/llama.cpp.git}
         LLAMA_CPP_REF: ${LLAMA_CPP_REF:-}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-mirrors.aliyun.com}
     image: tingwu-speech-service:gguf
     profiles: ["gguf", "all"]
     container_name: tingwu-gguf

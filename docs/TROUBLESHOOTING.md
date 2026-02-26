@@ -219,6 +219,86 @@ LLAMA_CPP_REPO=https://gitee.com/mirrors/llama.cpp.git \
 
 > 如果你们公司/内网有自己的 GitHub mirror，把 `LLAMA_CPP_REPO` 换成内网地址即可。
 
+### 2.8 构建镜像时 pip install 报 “Network is unreachable / Could not install packages”
+
+典型报错：
+
+```text
+Failed to establish a new connection: [Errno 101] Network is unreachable
+Could not install packages due to an OSError
+```
+
+说明：
+
+- `Dockerfile.onnx` / `Dockerfile.gguf` 在构建阶段会额外安装一些 PyPI 依赖（例如 `onnxruntime` / `gguf`）。
+- 如果你的机器无法直连 PyPI（或 `files.pythonhosted.org`），就会在 `docker compose build` 阶段失败。
+
+处理方式（推荐二选一）：
+
+1) **配置 PyPI 镜像（最常见）**  
+   你可以在 `.env` 里加入（或直接在命令行 export）：
+
+```bash
+# 国内常用（默认值）
+PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+PIP_TRUSTED_HOST=mirrors.aliyun.com
+
+# 如果你在海外或不想用镜像，可改回官方 PyPI
+# PIP_INDEX_URL=https://pypi.org/simple
+# PIP_TRUSTED_HOST=
+```
+
+然后重建：
+
+```bash
+docker compose -f docker-compose.models.yml build tingwu-onnx
+docker compose -f docker-compose.models.yml build tingwu-gguf
+```
+
+2) **使用代理（企业内网常见）**  
+   给 Docker daemon 或构建环境配置 `HTTP_PROXY/HTTPS_PROXY`，并确保容器内也能访问外网（见本章 2.2）。
+
+> 提示：本项目已在 `docker-compose.models.yml` 的 build args 中透传 `PIP_INDEX_URL/PIP_TRUSTED_HOST` 给 ONNX/GGUF 镜像。
+
+### 2.9 构建镜像时报 “No space left on device”（磁盘满 / Docker Root Dir 在 `/`）
+
+典型报错：
+
+```text
+OSError: [Errno 28] No space left on device
+```
+
+先看两件事：
+
+```bash
+df -h
+docker system df
+docker info | rg -n "Docker Root Dir" || true
+```
+
+如果你看到：
+
+- `/` 分区 100%（但 `/data` 很空）
+- `Docker Root Dir` 在 `/var/lib/docker`
+
+建议把 Docker 数据目录迁移到大盘（例如 `/data/docker`），避免后续构建/拉镜像反复爆盘：
+
+```bash
+sudo systemctl stop docker
+sudo rsync -aHAX --numeric-ids /var/lib/docker/ /data/docker/
+
+# 把 /etc/docker/daemon.json 合并配置（保留你已有的 dns / registry-mirrors / runtimes.nvidia）
+sudo cat /etc/docker/daemon.json
+
+# 加一行：
+#   "data-root": "/data/docker"
+
+sudo systemctl start docker
+docker info | rg -n "Docker Root Dir" || true
+```
+
+> 如果你只是临时腾空间，可以先清理 dangling 镜像/容器：`docker container prune -f && docker image prune -f`（谨慎使用 `-a`）。
+
 ---
 
 ## 3) 端口冲突（启动失败 / 访问不到）

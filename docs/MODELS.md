@@ -132,6 +132,8 @@ docker compose -f docker-compose.models.yml --profile gguf up -d --build
 docker logs -f tingwu-gguf
 ```
 
+如果你在 `--build` 阶段遇到 `pip install` 下载失败（例如 “Network is unreachable / Could not install packages”），请看 `docs/TROUBLESHOOTING.md` 的 **2.8**，并在 `.env` 设置 `PIP_INDEX_URL/PIP_TRUSTED_HOST`。
+
 ## 3) 端口对照表（默认值）
 
 默认端口可在 `.env` 中覆盖；下表为 `.env.example` 默认值：

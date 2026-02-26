@@ -10,8 +10,12 @@
 ARG TORCH_BASE_IMAGE=pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime
 ARG LLAMA_CPP_REPO=https://github.com/ggml-org/llama.cpp.git
 ARG LLAMA_CPP_REF=
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ARG PIP_TRUSTED_HOST=mirrors.aliyun.com
 
 FROM ${TORCH_BASE_IMAGE} AS python-builder
+ARG PIP_INDEX_URL
+ARG PIP_TRUSTED_HOST
 
 WORKDIR /app
 
@@ -29,10 +33,11 @@ RUN (apt-get -o Acquire::Retries=3 update || ( \
 COPY requirements.txt .
 
 # 安装基础依赖
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -i "${PIP_INDEX_URL}" --trusted-host "${PIP_TRUSTED_HOST}" -r requirements.txt
 
 # 安装 GGUF/ONNX 相关依赖
 RUN pip install --no-cache-dir \
+    -i "${PIP_INDEX_URL}" --trusted-host "${PIP_TRUSTED_HOST}" \
     onnxruntime>=1.16.0 \
     gguf>=0.10.0
 
