@@ -10,6 +10,7 @@ MAX_NUM_SEQS="${MAX_NUM_SEQS:-2}"
 MAX_NUM_BATCHED_TOKENS="${MAX_NUM_BATCHED_TOKENS:-4096}"
 GPU_MEM_UTIL="${GPU_MEMORY_UTILIZATION:-0.90}"
 FFMPEG_MAX_CONCURRENCY="${VIBEVOICE_FFMPEG_MAX_CONCURRENCY:-16}"
+MODEL_SOURCE="${MODEL_SOURCE:-modelscope}"
 
 echo "[vibevoice-asr] MODEL_ID=${MODEL_ID}"
 echo "[vibevoice-asr] PORT=${PORT}"
@@ -20,6 +21,7 @@ echo "[vibevoice-asr] MAX_NUM_SEQS=${MAX_NUM_SEQS}"
 echo "[vibevoice-asr] MAX_NUM_BATCHED_TOKENS=${MAX_NUM_BATCHED_TOKENS}"
 echo "[vibevoice-asr] GPU_MEMORY_UTILIZATION=${GPU_MEM_UTIL}"
 echo "[vibevoice-asr] VIBEVOICE_FFMPEG_MAX_CONCURRENCY=${FFMPEG_MAX_CONCURRENCY}"
+echo "[vibevoice-asr] MODEL_SOURCE=${MODEL_SOURCE}"
 
 export VIBEVOICE_FFMPEG_MAX_CONCURRENCY="${FFMPEG_MAX_CONCURRENCY}"
 
@@ -38,12 +40,23 @@ apt-get install -y ffmpeg libsndfile1
 # Install VibeVoice from mounted repo with vLLM support.
 python3 -m pip install -e "/app[vllm]"
 
-# Download model weights from HuggingFace into the default cache.
-MODEL_PATH="$(python3 - <<PY
+# Download model weights (ModelScope or HuggingFace).
+if [ "${MODEL_SOURCE}" = "modelscope" ]; then
+  echo "[vibevoice-asr] Downloading model from ModelScope..."
+  pip install -q modelscope 2>/dev/null || true
+  MODEL_PATH="$(python3 - <<PY
+from modelscope import snapshot_download
+print(snapshot_download('${MODEL_ID}'))
+PY
+)"
+else
+  echo "[vibevoice-asr] Downloading model from HuggingFace..."
+  MODEL_PATH="$(python3 - <<PY
 from huggingface_hub import snapshot_download
 print(snapshot_download('${MODEL_ID}'))
 PY
 )"
+fi
 
 echo "[vibevoice-asr] MODEL_PATH=${MODEL_PATH}"
 

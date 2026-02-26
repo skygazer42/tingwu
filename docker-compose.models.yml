@@ -15,6 +15,9 @@ version: "3.8"
 x-proxy-env: &proxy-env
   # Optional proxy passthrough for model downloads inside containers.
   # On macOS/Windows Docker Desktop, host loopback is usually `host.docker.internal`, not 127.0.0.1.
+  # Optional HuggingFace endpoint mirror for weights download (e.g. https://hf-mirror.com).
+  # If you want to use the official hub, set HF_ENDPOINT=https://huggingface.co in .env.
+  HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
   HTTP_PROXY: ${HTTP_PROXY:-}
   HTTPS_PROXY: ${HTTPS_PROXY:-}
   ALL_PROXY: ${ALL_PROXY:-}
@@ -249,6 +252,7 @@ services:
     ipc: host
     volumes:
       - huggingface-cache:/root/.cache/huggingface
+      - modelscope-cache:/root/.cache/modelscope
       - ./docker/remote-asr/start_qwen3_asr.sh:/start_qwen3_asr.sh:ro
     command:
       [
@@ -262,6 +266,7 @@ services:
       QWEN3_MODEL_ID: ${QWEN3_MODEL_ID:-Qwen/Qwen3-ASR-1.7B}
       PORT: 8000
       GPU_MEMORY_UTILIZATION: ${QWEN3_GPU_MEMORY_UTILIZATION:-0.85}
+      MODEL_SOURCE: ${MODEL_SOURCE:-modelscope}
     deploy:
       resources:
         reservations:
@@ -283,6 +288,7 @@ services:
       # Default: use the vendored snapshot under ./third_party/VibeVoice.
       - ${VIBEVOICE_REPO_PATH:-./third_party/VibeVoice}:/app
       - huggingface-cache:/root/.cache/huggingface
+      - modelscope-cache:/root/.cache/modelscope
       - ./docker/remote-asr/start_vibevoice_asr.sh:/start_vibevoice_asr.sh:ro
     entrypoint: ["bash", "-lc"]
     command:
@@ -304,6 +310,7 @@ services:
       MAX_NUM_BATCHED_TOKENS: ${VIBEVOICE_MAX_NUM_BATCHED_TOKENS:-4096}
       GPU_MEMORY_UTILIZATION: ${VIBEVOICE_GPU_MEMORY_UTILIZATION:-0.90}
       VIBEVOICE_FFMPEG_MAX_CONCURRENCY: ${VIBEVOICE_FFMPEG_MAX_CONCURRENCY:-16}
+      MODEL_SOURCE: ${MODEL_SOURCE:-modelscope}
       PYTORCH_ALLOC_CONF: expandable_segments:True
     deploy:
       resources:
@@ -388,4 +395,5 @@ services:
 volumes:
   model-cache:
   huggingface-cache:
+  modelscope-cache:
   onnx-cache:
