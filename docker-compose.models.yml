@@ -199,6 +199,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.gguf
+      args:
+        # If GitHub access is unstable/blocked, set LLAMA_CPP_REPO to an internal mirror:
+        #   LLAMA_CPP_REPO=https://gitee.com/mirrors/llama.cpp.git docker compose ... build tingwu-gguf
+        LLAMA_CPP_REPO: ${LLAMA_CPP_REPO:-https://github.com/ggml-org/llama.cpp.git}
+        LLAMA_CPP_REF: ${LLAMA_CPP_REF:-}
     image: tingwu-speech-service:gguf
     profiles: ["gguf", "all"]
     container_name: tingwu-gguf

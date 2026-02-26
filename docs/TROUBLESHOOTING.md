@@ -188,6 +188,37 @@ docker run --rm pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime bash -lc 'apt-get 
 
 > 不推荐关闭签名校验（`--allow-unauthenticated` / `Acquire::AllowInsecureRepositories=true`），这会带来供应链风险。
 
+### 2.7 构建 GGUF 镜像时 git clone llama.cpp 失败（GitHub 网络/HTTP2）
+
+典型报错：
+
+```text
+error: RPC failed; curl 92 HTTP/2 stream 0 was not closed cleanly: CANCEL (err 8)
+fatal: early EOF
+fatal: fetch-pack: invalid index-pack output
+```
+
+原因：构建 GGUF 镜像需要在容器内拉取 `llama.cpp` 源码并编译动态库；部分网络/代理对 GitHub 的 **HTTP/2** 连接不稳定。
+
+建议处理：
+
+1) **重试一次**（偶发网络抖动会自愈）：
+
+```bash
+docker compose -f docker-compose.models.yml build --no-cache tingwu-gguf
+```
+
+2) 如果持续失败：把 `llama.cpp` repo 换成可访问的镜像源/内网 Git mirror
+
+本项目支持通过环境变量覆盖（`docker-compose.models.yml` 已把它作为 build arg 透传）：
+
+```bash
+LLAMA_CPP_REPO=https://gitee.com/mirrors/llama.cpp.git \
+  docker compose -f docker-compose.models.yml build --no-cache tingwu-gguf
+```
+
+> 如果你们公司/内网有自己的 GitHub mirror，把 `LLAMA_CPP_REPO` 换成内网地址即可。
+
 ---
 
 ## 3) 端口冲突（启动失败 / 访问不到）

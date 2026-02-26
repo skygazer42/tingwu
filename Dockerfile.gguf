@@ -53,14 +53,30 @@ RUN (apt-get -o Acquire::Retries=3 update || ( \
       build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-RUN git clone --depth 1 "${LLAMA_CPP_REPO}" llama.cpp
+# Workaround: some networks/proxies break git fetch over HTTP/2 (common with GitHub),
+# causing errors like "curl 92 HTTP/2 stream ... CANCEL" / "early EOF".
+# Force HTTP/1.1 and retry a few times.
+RUN git config --global http.version HTTP/1.1 \
+    && for i in 1 2 3; do \
+         echo "[git] cloning llama.cpp (attempt ${i}) from ${LLAMA_CPP_REPO}" >&2; \
+         git clone --depth 1 "${LLAMA_CPP_REPO}" llama.cpp && break; \
+         echo "[git] clone failed; retrying..." >&2; \
+         rm -rf llama.cpp; \
+         sleep $((i * 2)); \
+       done \
+    && test -d llama.cpp/.git
 
 WORKDIR /tmp/llama.cpp
 
 # Optional: pin to a specific tag/branch for reproducible builds.
 # Example: --build-arg LLAMA_CPP_REF=b3932
 RUN if [ -n "${LLAMA_CPP_REF}" ]; then \
-      git fetch --depth 1 origin "${LLAMA_CPP_REF}" && git checkout FETCH_HEAD; \
+      for i in 1 2 3; do \
+        echo "[git] fetching llama.cpp ref=${LLAMA_CPP_REF} (attempt ${i})" >&2; \
+        git fetch --depth 1 origin "${LLAMA_CPP_REF}" && git checkout FETCH_HEAD && break; \
+        echo "[git] fetch failed; retrying..." >&2; \
+        sleep $((i * 2)); \
+      done; \
     fi
 
 RUN cmake -S . -B build \
