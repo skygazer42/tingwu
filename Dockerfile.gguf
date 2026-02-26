@@ -51,47 +51,64 @@ ARG LLAMA_CPP_REF
 WORKDIR /tmp
 
 RUN (apt-get -o Acquire::Retries=3 update || ( \
-          echo "[apt] update failed; falling back to http://mirrors.aliyun.com/ubuntu" >&2; \
-          sed -i 's|https://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g; s|https://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g; s|http://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g; s|https://mirrors.aliyun.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list; \
-          apt-get -o Acquire::Retries=3 update)) \
-    && apt-get install -y --no-install-recommends \
-      git \
-      cmake \
-      build-essential \
-    && rm -rf /var/lib/apt/lists/*
+	          echo "[apt] update failed; falling back to http://mirrors.aliyun.com/ubuntu" >&2; \
+	          sed -i 's|https://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g; s|https://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g; s|http://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g; s|https://mirrors.aliyun.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list; \
+	          apt-get -o Acquire::Retries=3 update)) \
+	    && apt-get install -y --no-install-recommends \
+	      git \
+	      cmake \
+	      build-essential \
+	    && rm -rf /var/lib/apt/lists/*
+
+# Optional offline build: if you place llama.cpp sources under
+#   ./third_party/llama.cpp/
+# (must contain CMakeLists.txt), the build will use those sources and will NOT
+# require network access to GitHub/Gitee during docker build.
+COPY third_party/llama.cpp/ /tmp/llama.cpp.local/
 
 # Workaround: some networks/proxies break git fetch over HTTP/2 (common with GitHub),
 # causing errors like "curl 92 HTTP/2 stream ... CANCEL" / "early EOF".
 # Force HTTP/1.1 and retry a few times.
-RUN git config --global http.version HTTP/1.1 \
-    && for repo in "${LLAMA_CPP_REPO}" "${LLAMA_CPP_REPO_FALLBACK}"; do \
-         if [ -z "${repo}" ]; then continue; fi; \
-         for i in 1 2 3; do \
-           echo "[git] cloning llama.cpp (attempt ${i}) from ${repo}" >&2; \
-           git clone --depth 1 "${repo}" llama.cpp && break; \
-           echo "[git] clone failed; retrying..." >&2; \
-           rm -rf llama.cpp; \
-           sleep $((i * 2)); \
-         done; \
-         if test -d llama.cpp/.git; then break; fi; \
-       done \
-    && test -d llama.cpp/.git
+RUN if test -f /tmp/llama.cpp.local/CMakeLists.txt; then \
+      echo "[llama.cpp] using vendored sources from build context: third_party/llama.cpp" >&2; \
+      rm -rf /tmp/llama.cpp; \
+      mv /tmp/llama.cpp.local /tmp/llama.cpp; \
+    else \
+      echo "[llama.cpp] vendored sources not found; cloning from remote repos..." >&2; \
+      rm -rf /tmp/llama.cpp.local; \
+      git config --global http.version HTTP/1.1; \
+      for repo in "${LLAMA_CPP_REPO}" "${LLAMA_CPP_REPO_FALLBACK}"; do \
+        if [ -z "${repo}" ]; then continue; fi; \
+        for i in 1 2 3; do \
+          echo "[git] cloning llama.cpp (attempt ${i}) from ${repo}" >&2; \
+          git clone --depth 1 "${repo}" llama.cpp && break; \
+          echo "[git] clone failed; retrying..." >&2; \
+          rm -rf llama.cpp; \
+          sleep $((i * 2)); \
+        done; \
+        if test -f llama.cpp/CMakeLists.txt; then break; fi; \
+      done; \
+      test -f llama.cpp/CMakeLists.txt; \
+      mv llama.cpp /tmp/llama.cpp; \
+    fi
 
 WORKDIR /tmp/llama.cpp
 
 # Optional: pin to a specific tag/branch for reproducible builds.
 # Example: --build-arg LLAMA_CPP_REF=b3932
-RUN if [ -n "${LLAMA_CPP_REF}" ]; then \
-      for i in 1 2 3; do \
-        echo "[git] fetching llama.cpp ref=${LLAMA_CPP_REF} (attempt ${i})" >&2; \
-        git fetch --depth 1 origin "${LLAMA_CPP_REF}" && git checkout FETCH_HEAD && break; \
-        echo "[git] fetch failed; retrying..." >&2; \
-        sleep $((i * 2)); \
-      done; \
-    fi
+RUN if [ -n "${LLAMA_CPP_REF}" ] && test -d .git; then \
+	      for i in 1 2 3; do \
+	        echo "[git] fetching llama.cpp ref=${LLAMA_CPP_REF} (attempt ${i})" >&2; \
+	        git fetch --depth 1 origin "${LLAMA_CPP_REF}" && git checkout FETCH_HEAD && break; \
+	        echo "[git] fetch failed; retrying..." >&2; \
+	        sleep $((i * 2)); \
+	      done; \
+	    elif [ -n "${LLAMA_CPP_REF}" ]; then \
+	      echo "[git] LLAMA_CPP_REF is set but llama.cpp sources are not a git repo; skipping checkout." >&2; \
+	    fi
 
 RUN cmake -S . -B build \
-      -DCMAKE_BUILD_TYPE=Release \
+	      -DCMAKE_BUILD_TYPE=Release \
       -DBUILD_SHARED_LIBS=ON \
     && cmake --build build -j"$(nproc)" \
     && mkdir -p /out \

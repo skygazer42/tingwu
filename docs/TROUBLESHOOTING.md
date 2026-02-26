@@ -237,6 +237,29 @@ LLAMA_CPP_REPO_FALLBACK= \
 
 > 如果你们公司/内网有自己的 GitHub mirror，把 `LLAMA_CPP_REPO` 换成内网地址即可；必要时也可以用 `LLAMA_CPP_REPO_FALLBACK` 做第二备选。
 
+3) **完全离线 / 容器内无法访问任何 Git 源**  
+   你可以把 `llama.cpp` 源码提前放到项目目录里，让构建阶段直接 `COPY` 进去（不再需要容器内 `git clone`）：
+
+要求：`./third_party/llama.cpp/` 目录下必须包含 `CMakeLists.txt`（即 llama.cpp repo 根目录）。
+
+示例（在宿主机准备好源码；可从任意可访问渠道获取）：
+
+```bash
+cd TingWu
+mkdir -p third_party
+
+# 如果你宿主机能访问 gitee（或公司内网 mirror），在宿主机 clone（不是容器内 clone）
+git clone --depth 1 https://gitee.com/mirrors/llama.cpp.git third_party/llama.cpp
+
+# 可选：删掉 .git，减少 build context
+rm -rf third_party/llama.cpp/.git
+
+# 然后再构建
+docker compose -f docker-compose.models.yml build --no-cache tingwu-gguf
+```
+
+> 注意：如果你选择离线源码方式，`LLAMA_CPP_REF`（按 tag/commit pin）将被忽略，因为源码目录通常不带 `.git`。
+
 ### 2.8 构建镜像时 pip install 报 “Network is unreachable / Could not install packages”
 
 典型报错：

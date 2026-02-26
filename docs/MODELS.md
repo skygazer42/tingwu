@@ -122,6 +122,7 @@ GGUF 后端适合“离线/本地 CPU”使用，但它 **不会自动下载模�
 说明：
 - Docker 的 GGUF 镜像会在构建时编译并内置 llama.cpp 动态库到 `/app/llama_cpp/lib`（默认 `GGUF_LIB_DIR` 指向该目录），所以 **不需要**你在宿主机额外放 `.so`。
 - 如果你希望使用自定义的 llama.cpp 编译产物，可设置 `GGUF_LIB_DIR=/app/data/models/bin` 并把 `.so` 放到宿主机 `./data/models/bin/`。
+- 如果你在构建 GGUF 镜像时容器内无法访问 GitHub/Gitee，可把 `llama.cpp` 源码提前放到 `./third_party/llama.cpp/`，构建时会直接 `COPY` 进去（见 `docs/TROUBLESHOOTING.md` 的 2.7）。
 
 这些路径都可以通过 `docker-compose.models.yml` 的 `GGUF_*` 环境变量覆盖。
 
