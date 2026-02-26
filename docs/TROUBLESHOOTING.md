@@ -217,7 +217,25 @@ LLAMA_CPP_REPO=https://gitee.com/mirrors/llama.cpp.git \
   docker compose -f docker-compose.models.yml build --no-cache tingwu-gguf
 ```
 
-> 如果你们公司/内网有自己的 GitHub mirror，把 `LLAMA_CPP_REPO` 换成内网地址即可。
+说明：
+
+- 默认配置是：先尝试 `LLAMA_CPP_REPO`（GitHub），失败则回退 `LLAMA_CPP_REPO_FALLBACK`（gitee mirror）。
+- 你也可以直接在 `.env` 中设置（推荐，避免每次命令行写一长串）。
+
+更多用法示例：
+
+```bash
+# 1) 直接指定主 repo（最推荐）
+LLAMA_CPP_REPO=https://gitee.com/mirrors/llama.cpp.git \
+  docker compose -f docker-compose.models.yml build --no-cache tingwu-gguf
+
+# 2) 使用公司内网 mirror，并关闭 fallback（可选）
+LLAMA_CPP_REPO=http://git.company.local/llama.cpp.git \
+LLAMA_CPP_REPO_FALLBACK= \
+  docker compose -f docker-compose.models.yml build --no-cache tingwu-gguf
+```
+
+> 如果你们公司/内网有自己的 GitHub mirror，把 `LLAMA_CPP_REPO` 换成内网地址即可；必要时也可以用 `LLAMA_CPP_REPO_FALLBACK` 做第二备选。
 
 ### 2.8 构建镜像时 pip install 报 “Network is unreachable / Could not install packages”
 

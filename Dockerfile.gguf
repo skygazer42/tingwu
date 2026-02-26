@@ -9,6 +9,7 @@
 
 ARG TORCH_BASE_IMAGE=pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime
 ARG LLAMA_CPP_REPO=https://github.com/ggml-org/llama.cpp.git
+ARG LLAMA_CPP_REPO_FALLBACK=https://gitee.com/mirrors/llama.cpp.git
 ARG LLAMA_CPP_REF=
 ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
 ARG PIP_TRUSTED_HOST=mirrors.aliyun.com
@@ -44,6 +45,7 @@ RUN pip install --no-cache-dir \
 FROM ${TORCH_BASE_IMAGE} AS llama-builder
 
 ARG LLAMA_CPP_REPO
+ARG LLAMA_CPP_REPO_FALLBACK
 ARG LLAMA_CPP_REF
 
 WORKDIR /tmp
@@ -62,12 +64,16 @@ RUN (apt-get -o Acquire::Retries=3 update || ( \
 # causing errors like "curl 92 HTTP/2 stream ... CANCEL" / "early EOF".
 # Force HTTP/1.1 and retry a few times.
 RUN git config --global http.version HTTP/1.1 \
-    && for i in 1 2 3; do \
-         echo "[git] cloning llama.cpp (attempt ${i}) from ${LLAMA_CPP_REPO}" >&2; \
-         git clone --depth 1 "${LLAMA_CPP_REPO}" llama.cpp && break; \
-         echo "[git] clone failed; retrying..." >&2; \
-         rm -rf llama.cpp; \
-         sleep $((i * 2)); \
+    && for repo in "${LLAMA_CPP_REPO}" "${LLAMA_CPP_REPO_FALLBACK}"; do \
+         if [ -z "${repo}" ]; then continue; fi; \
+         for i in 1 2 3; do \
+           echo "[git] cloning llama.cpp (attempt ${i}) from ${repo}" >&2; \
+           git clone --depth 1 "${repo}" llama.cpp && break; \
+           echo "[git] clone failed; retrying..." >&2; \
+           rm -rf llama.cpp; \
+           sleep $((i * 2)); \
+         done; \
+         if test -d llama.cpp/.git; then break; fi; \
        done \
     && test -d llama.cpp/.git
 

@@ -206,6 +206,9 @@ services:
         # If GitHub access is unstable/blocked, set LLAMA_CPP_REPO to an internal mirror:
         #   LLAMA_CPP_REPO=https://gitee.com/mirrors/llama.cpp.git docker compose ... build tingwu-gguf
         LLAMA_CPP_REPO: ${LLAMA_CPP_REPO:-https://github.com/ggml-org/llama.cpp.git}
+        # Fallback mirror used when the primary repo is unreachable.
+        # Set to empty to disable the fallback.
+        LLAMA_CPP_REPO_FALLBACK: ${LLAMA_CPP_REPO_FALLBACK:-https://gitee.com/mirrors/llama.cpp.git}
         LLAMA_CPP_REF: ${LLAMA_CPP_REF:-}
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}
         PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-mirrors.aliyun.com}
