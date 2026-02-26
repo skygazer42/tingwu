@@ -61,7 +61,7 @@ x-tingwu-base: &tingwu-base
   build:
     context: .
     dockerfile: Dockerfile
-  image: tingwu-speech-service:latest
+  image: tingwu-speech-service:pytorch
   volumes: *tingwu-volumes
   restart: unless-stopped
   logging: *tingwu-logging
@@ -74,7 +74,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.diarizer
-    image: tingwu-diarizer:latest
+    image: tingwu-diarizer:pyannote
     profiles: ["diarizer", "all"]
     container_name: tingwu-diarizer
     ports:
@@ -243,7 +243,7 @@ services:
   # started when enabling their profiles. TingWu wrappers below expose a unified
   # TingWu API for each model.
   qwen3-asr:
-    image: qwenllm/qwen3-asr:latest
+    image: ${QWEN3_ASR_IMAGE:-qwenllm/qwen3-asr:latest}
     profiles: ["qwen3", "router", "all"]
     container_name: qwen3-asr
     # Expose for debugging (TingWu talks via the docker network name).
@@ -277,7 +277,7 @@ services:
     restart: unless-stopped
 
   vibevoice-asr:
-    image: vllm/vllm-openai:latest
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:latest}
     profiles: ["vibevoice", "router"]
     container_name: vibevoice-asr
     ports:

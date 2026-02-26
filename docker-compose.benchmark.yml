@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.benchmark
-    image: tingwu-benchmark:latest
+    image: tingwu-benchmark:v1
     container_name: tingwu-benchmark
     volumes:
       - ./data:/app/data

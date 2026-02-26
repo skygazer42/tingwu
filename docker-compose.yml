@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.diarizer
-    image: tingwu-diarizer:latest
+    image: tingwu-diarizer:pyannote
     profiles: ["diarizer"]
     container_name: tingwu-diarizer
     ports:
@@ -38,7 +38,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: tingwu-speech-service:latest
+    image: tingwu-speech-service:pytorch
     container_name: tingwu-service
     ports:
       - "${PORT:-8000}:8000"

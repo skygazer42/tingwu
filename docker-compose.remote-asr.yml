@@ -21,7 +21,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.diarizer
-    image: tingwu-diarizer:latest
+    image: tingwu-diarizer:pyannote
     profiles: ["diarizer"]
     container_name: tingwu-diarizer
     ports:
@@ -50,7 +50,7 @@ services:
 
   # Qwen3-ASR (OpenAI-compatible /v1/chat/completions)
   qwen3-asr:
-    image: qwenllm/qwen3-asr:latest
+    image: ${QWEN3_ASR_IMAGE:-qwenllm/qwen3-asr:latest}
     container_name: qwen3-asr
     ports:
       - "9001:8000"
@@ -81,7 +81,7 @@ services:
   # NOTE: the official server defaults (64k context) usually need >=24GB VRAM.
   # This compose file uses smaller defaults so it can start on ~16GB VRAM GPUs for smoke tests.
   vibevoice-asr:
-    image: vllm/vllm-openai:latest
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:latest}
     container_name: vibevoice-asr
     ports:
       - "9002:8000"
@@ -124,7 +124,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: tingwu-speech-service:latest
+    image: tingwu-speech-service:pytorch
     container_name: tingwu-service
     ports:
       - "${PORT:-8000}:8000"

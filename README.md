@@ -40,34 +40,52 @@
 
 ### 方式一：Docker 部署 (推荐)
 
+> **Compose 文件怎么选？**
+>
+> | 文件 | 定位 | 典型用途 |
+> |------|------|----------|
+> | `docker-compose.yml` | **单模型快速启动**：只跑 1 个 PyTorch (Paraformer) 后端 | 开发调试、快速体验 |
+> | `docker-compose.cpu.yml` | 同上，纯 CPU | 没有 GPU 的机器 |
+> | `docker-compose.sensevoice.yml` | 同上，SenseVoice 后端 | 需要多语言 |
+> | `docker-compose.onnx.yml` | 同上，ONNX INT8 后端 | 轻量/低延迟 |
+> | `docker-compose.models.yml` | **多模型按需启动**：每个后端一个容器，按 profile 选择 | 生产/A-B 对比/多后端并存 |
+> | `docker-compose.remote-asr.yml` | 远程 ASR (Qwen3 + VibeVoice) + TingWu router | 大模型 ASR 部署 |
+>
+> `docker-compose.yml` 等价于 `docker-compose.models.yml --profile pytorch`，只是写法更简单。如果你只需要一个后端，用前者；如果想同时跑多个后端或者用 Qwen3/VibeVoice，用后者。
+
+##### 单模型快速启动
+
 ```bash
 # 构建镜像 (包含前端)
-docker-compose build
+docker compose build
 
-# 启动服务
-docker-compose up -d
+# 启动服务 (默认 PyTorch Paraformer GPU)
+docker compose up -d
 ```
 
 访问 **http://localhost:8000** 即可使用。
 
 > **首次启动说明**：首次运行时会自动从 ModelScope 下载 ASR 模型（约 1-2GB），请耐心等待。模型会缓存到 Docker Volume 中，后续启动无需重新下载。
 
-#### 容器选择
+其他单模型变体：
 
-| 场景 | 命令 | 模型大小 |
-|------|------|----------|
-| **GPU 版本** (推荐) | `docker-compose up -d` | ~1.5GB |
-| **CPU 版本** | `docker-compose -f docker-compose.cpu.yml up -d` | ~1.5GB |
-| **SenseVoice 模型** | `docker-compose -f docker-compose.sensevoice.yml up -d` | ~500MB |
-| **ONNX 后端** | `docker-compose -f docker-compose.onnx.yml up -d` | ~400MB |
+| 场景 | 命令 | 说明 |
+|------|------|------|
+| **PyTorch GPU** (默认) | `docker compose up -d` | Paraformer-large，功能最全 |
+| **CPU 版本** | `docker compose -f docker-compose.cpu.yml up -d` | 无 GPU 机器 |
+| **SenseVoice** | `docker compose -f docker-compose.sensevoice.yml up -d` | 多语言，模型更小 |
+| **ONNX** | `docker compose -f docker-compose.onnx.yml up -d` | INT8 量化，低延迟 |
 
-#### 多模型按需启动（每个模型=一个容器，一个统一 API）
+> 以上每条命令都只启动 **1 个后端 + 1 个 TingWu 服务**，端口统一 `8000`。它们之间互斥，同时只能跑一个。
 
-如果你希望**每个模型/后端单独一个容器**，并且都提供同一套 TingWu API（`/api/v1/transcribe`），可以使用：`docker-compose.models.yml`。
+##### 多模型按需启动（每个模型 = 一个容器，统一 API）
+
+当你需要 **同时跑多个后端**（不同端口，同一套 `/api/v1/transcribe` API），或者需要 **Qwen3-ASR / VibeVoice-ASR** 等远程大模型，使用 `docker-compose.models.yml`：
 
 特点：
-- 端口不同，但 API 路径一致，方便做 A/B 对比和基准测试
-- 默认不启动任何模型，按需用 profile 启动
+- 按 profile 按需启动，不用的后端不占资源
+- 每个后端一个独立端口，方便 A/B 对比和基准测试
+- 支持 Qwen3-ASR、VibeVoice-ASR、Router 等远程模型后端
 
 推荐用一键脚本（内部就是 `docker compose`，只是帮你少记命令）：
 
@@ -100,11 +118,11 @@ docker compose -f docker-compose.models.yml --profile gguf up -d
 docker compose -f docker-compose.models.yml --profile whisper up -d
 
 # 6) Qwen3-ASR (远程模型容器 + TingWu 包装) -> http://localhost:8201
-# 首次启动会 pull 外部镜像，并在容器内从 HuggingFace 下载权重（缓存到 huggingface-cache volume）
+# 首次启动会 pull 外部镜像，并在容器内从 ModelScope 下载权重（缓存到 modelscope-cache volume）
 docker compose -f docker-compose.models.yml --profile qwen3 up -d
 
 # 7) VibeVoice-ASR (远程模型容器 + TingWu 包装) -> http://localhost:8202
-# 默认使用 ./third_party/VibeVoice（仓库内置最小快照）；如需自定义路径再设置 VIBEVOICE_REPO_PATH
+# 默认使用 ./third_party/VibeVoice（仓库内置最小快照）；权重从 ModelScope 下载
 docker compose -f docker-compose.models.yml --profile vibevoice up -d
 
 # 8) Router (Qwen3 + VibeVoice 自动路由) -> http://localhost:8200
@@ -135,6 +153,7 @@ git -c http.version=HTTP/1.1 clone --depth 1 https://github.com/microsoft/VibeVo
 
 ```bash
 docker pull vllm/vllm-openai:latest
+# 如需锁定版本，在 .env 中设置 VLLM_IMAGE=vllm/vllm-openai:<tag>
 ```
 
 3) 启动（两种方式二选一）：
@@ -149,7 +168,8 @@ VIBEVOICE_REPO_PATH=/abs/path/to/VibeVoice \
 ```
 
 说明：
-- 首次启动会在 `vibevoice-asr` 容器内 **自动从 HuggingFace 下载模型权重**（默认 `microsoft/VibeVoice-ASR`），缓存到 `huggingface-cache` volume；后续重启不会重复下载。
+- 首次启动会在容器内 **自动从 ModelScope 下载模型权重**（默认 `microsoft/VibeVoice-ASR`），缓存到 Docker Volume；后续重启不会重复下载。
+- 如需切回 HuggingFace 下载，在 `.env` 中设置 `MODEL_SOURCE=huggingface`。
 - 观察启动/下载进度：`docker logs -f vibevoice-asr`
 - wrapper 入口：`http://localhost:8202`（TingWu API/UI）；vLLM server 端口：`http://localhost:9002`（仅调试用）
 
@@ -424,7 +444,7 @@ curl -X POST "http://localhost:8200/api/v1/transcribe" \
 
 ```bash
 # 查看模型下载进度
-docker-compose logs -f | grep -i "download\|loading"
+docker compose logs -f | grep -i "download\|loading"
 
 # 查看缓存大小
 docker volume ls
@@ -435,13 +455,13 @@ docker system df -v
 
 ```bash
 # 查看日志
-docker-compose logs -f
+docker compose logs -f
 
 # 停止服务
-docker-compose down
+docker compose down
 
 # 重新构建
-docker-compose build --no-cache
+docker compose build --no-cache
 ```
 
 ### 方式二：本地开发
@@ -485,18 +505,20 @@ npm run dev
 ./scripts/start.sh stop
 ```
 
-### 方式四：HuggingFace 模型自部署（vLLM 远程后端）
+### 方式四：远程模型自部署（vLLM / ModelScope）
 
 如果你希望把模型推理放到独立服务（本地/内网），TingWu 支持通过 vLLM 的 OpenAI 兼容接口接入 **Qwen3-ASR** 和 **VibeVoice-ASR**。
 
-1) 启动 Qwen3-ASR（自动从 HuggingFace 下载权重）
+> 模型权重默认从 [ModelScope](https://modelscope.cn) 下载（国内网络友好）。如需切换到 HuggingFace，设置 `MODEL_SOURCE=huggingface`。
+
+1) 启动 Qwen3-ASR（自动从 ModelScope 下载权重）
 
 ```bash
 pip install -U "qwen-asr[vllm]"
 qwen-asr-serve Qwen/Qwen3-ASR-1.7B --host 0.0.0.0 --port 9001 --gpu-memory-utilization 0.8
 ```
 
-2) 启动 VibeVoice-ASR（官方 vLLM Docker，自动从 HuggingFace 下载）
+2) 启动 VibeVoice-ASR（官方 vLLM Docker，自动从 ModelScope 下载）
 
 ```bash
 cd TingWu
@@ -740,8 +762,11 @@ tingwu/
 ├── examples/               # 使用示例
 ├── tests/                  # 测试 (165 用例, 90.9% 通过率)
 ├── Dockerfile
-├── docker-compose.yml      # GPU 部署
-└── docker-compose.cpu.yml  # CPU 部署
+├── docker-compose.yml          # 单模型快速启动 (PyTorch GPU)
+├── docker-compose.cpu.yml      # 单模型 CPU
+├── docker-compose.models.yml   # 多模型按需启动 (profiles)
+├── docker-compose.remote-asr.yml # 远程 ASR (Qwen3 + VibeVoice)
+└── docker-compose.benchmark.yml  # 基准测试
 ```
 
 ## 技术栈
