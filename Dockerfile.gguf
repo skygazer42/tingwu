@@ -107,14 +107,19 @@ RUN if [ -n "${LLAMA_CPP_REF}" ] && test -d .git; then \
 	      echo "[git] LLAMA_CPP_REF is set but llama.cpp sources are not a git repo; skipping checkout." >&2; \
 	    fi
 
-RUN cmake -S . -B build \
+	RUN cmake -S . -B build \
 	      -DCMAKE_BUILD_TYPE=Release \
-      -DBUILD_SHARED_LIBS=ON \
-    && cmake --build build -j"$(nproc)" \
-    && mkdir -p /out \
-    && find build -name 'libllama.so' -exec cp -v {} /out/ \; \
-    && find build -name 'libggml.so' -exec cp -v {} /out/ \; \
-    && find build -name 'libggml-base.so' -exec cp -v {} /out/ \;
+	      -DBUILD_SHARED_LIBS=ON \
+	      -DLLAMA_BUILD_COMMON=OFF \
+	      -DLLAMA_BUILD_TESTS=OFF \
+	      -DLLAMA_BUILD_TOOLS=OFF \
+	      -DLLAMA_BUILD_EXAMPLES=OFF \
+	      -DLLAMA_BUILD_SERVER=OFF \
+	    && cmake --build build -j"$(nproc)" \
+	    && mkdir -p /out \
+	    && find build -name 'libllama.so' -exec cp -v {} /out/ \; \
+	    && find build -name 'libggml.so' -exec cp -v {} /out/ \; \
+	    && find build -name 'libggml-base.so' -exec cp -v {} /out/ \;
 
 FROM ${TORCH_BASE_IMAGE}
 

@@ -238,7 +238,8 @@ LLAMA_CPP_REPO_FALLBACK= \
 > 如果你们公司/内网有自己的 GitHub mirror，把 `LLAMA_CPP_REPO` 换成内网地址即可；必要时也可以用 `LLAMA_CPP_REPO_FALLBACK` 做第二备选。
 
 3) **完全离线 / 容器内无法访问任何 Git 源**  
-   你可以把 `llama.cpp` 源码提前放到项目目录里，让构建阶段直接 `COPY` 进去（不再需要容器内 `git clone`）：
+   当前仓库已内置一份 `llama.cpp` 源码快照在 `./third_party/llama.cpp/`（用于 GGUF 镜像构建时编译动态库），因此**一般不需要额外 clone**。  
+   如果你删掉了该目录、或希望升级/替换版本，可以把 `llama.cpp` 源码提前放到项目目录里，让构建阶段直接 `COPY` 进去（不再需要容器内 `git clone`）：
 
 要求：`./third_party/llama.cpp/` 目录下必须包含 `CMakeLists.txt`（即 llama.cpp repo 根目录）。
 
