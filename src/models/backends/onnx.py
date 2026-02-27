@@ -4,6 +4,7 @@ from typing import Optional, Dict, Any, List
 from pathlib import Path
 
 from .base import ASRBackend
+from src.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -164,8 +165,8 @@ class ONNXBackend(ASRBackend):
         logger.info(f"Warming up ONNX models with {duration}s silent audio...")
 
         try:
-            # 预热 ASR 模型
-            _ = self._model(silent_audio)
+            # 预热 ASR 模型（funasr-onnx Paraformer 最稳妥的输入是音频文件路径）
+            _ = self.transcribe(silent_audio)
 
             # 预热标点模型
             _ = self._punc_model("测试预热")
@@ -215,35 +216,71 @@ class ONNXBackend(ASRBackend):
         if hotwords:
             logger.debug("ONNX backend: hotwords will be processed via post-processing pipeline")
 
-        # TingWu's API standardizes uploads to raw PCM16LE (16kHz, mono) bytes.
-        # funasr-onnx Paraformer expects a float32 waveform, so convert when needed.
-        if isinstance(audio_input, (bytes, bytearray)):
+        # NOTE: funasr-onnx Paraformer is most stable when called with an *audio file path*
+        # (see scripts/benchmark_asr.py usage). TingWu HTTP endpoints provide PCM16LE bytes,
+        # so we materialize a temporary WAV file when needed.
+        wav_path: Optional[str] = None
+        created_tmp_wav = False
+        if isinstance(audio_input, (str, Path)):
+            wav_path = str(audio_input)
+        else:
+            import tempfile
+            import numpy as np
+
             from src.core.audio.pcm import (
                 is_wav_bytes,
-                pcm16le_bytes_to_float32,
+                float32_to_pcm16le_bytes,
                 wav_bytes_to_float32,
             )
+            from src.models.backends.remote_utils import pcm16le_to_wav_bytes
 
-            data = bytes(audio_input)
-            if is_wav_bytes(data):
-                audio, sr = wav_bytes_to_float32(data)
-                if sr != 16000:
-                    try:
-                        import librosa
+            wav_bytes: bytes
 
-                        audio = librosa.resample(audio, orig_sr=sr, target_sr=16000)
-                    except Exception as e:
-                        raise ValueError(
-                            f"Unsupported WAV sample_rate={sr}, expected 16000"
-                        ) from e
-                audio_input = audio
+            if isinstance(audio_input, (bytes, bytearray)):
+                data = bytes(audio_input)
+                if is_wav_bytes(data):
+                    # Normalize to 16k mono PCM16 WAV for consistency.
+                    audio_f32, sr = wav_bytes_to_float32(data)
+                    if sr != 16000:
+                        try:
+                            import librosa
+
+                            audio_f32 = librosa.resample(audio_f32, orig_sr=sr, target_sr=16000)
+                        except Exception as e:
+                            raise ValueError(
+                                f"Unsupported WAV sample_rate={sr}, expected 16000"
+                            ) from e
+                    pcm = float32_to_pcm16le_bytes(audio_f32)
+                else:
+                    # Raw PCM16LE 16k mono.
+                    pcm = data
+                    if len(pcm) % 2 != 0:
+                        pcm = pcm[: len(pcm) - 1]
+                wav_bytes = pcm16le_to_wav_bytes(pcm, sample_rate=16000, channels=1, sampwidth=2)
+            elif isinstance(audio_input, np.ndarray):
+                a = audio_input.astype(np.float32, copy=False)
+                pcm = float32_to_pcm16le_bytes(a)
+                wav_bytes = pcm16le_to_wav_bytes(pcm, sample_rate=16000, channels=1, sampwidth=2)
             else:
-                audio_input = pcm16le_bytes_to_float32(data)
+                raise ValueError(f"Unsupported audio input type for ONNX backend: {type(audio_input)}")
+
+            settings.uploads_dir.mkdir(parents=True, exist_ok=True)
+            tmp = tempfile.NamedTemporaryFile(
+                mode="wb",
+                suffix=".wav",
+                dir=str(settings.uploads_dir),
+                delete=False,
+            )
+            tmp.write(wav_bytes)
+            tmp.flush()
+            tmp.close()
+            wav_path = tmp.name
+            created_tmp_wav = True
 
         try:
             # 直接对完整音频进行 ASR
             # funasr_onnx Paraformer 返回: [{'preds': ('text', [chars])}]
-            asr_result = self._model(audio_input)
+            asr_result = self._model(wav_path)
 
             if not asr_result or len(asr_result) == 0:
                 return {"text": "", "sentence_info": []}
@@ -282,6 +319,15 @@ class ONNXBackend(ASRBackend):
         except Exception as e:
             logger.error(f"ONNX transcription failed: {e}")
             raise
+        finally:
+            if created_tmp_wav and wav_path:
+                try:
+                    import os
+
+                    if os.path.exists(wav_path):
+                        os.unlink(wav_path)
+                except Exception:
+                    pass
 
     def transcribe_streaming(
         self,
