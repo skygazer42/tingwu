@@ -68,6 +68,8 @@ services:
       PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}
       PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-mirrors.aliyun.com}
       QWEN3_MODEL_ID: ${QWEN3_MODEL_ID:-Qwen/Qwen3-ASR-1.7B}
+      # Optional: point to a local model directory inside the container to avoid downloading.
+      QWEN3_MODEL_PATH: ${QWEN3_MODEL_PATH:-}
       PORT: 8000
       GPU_MEMORY_UTILIZATION: ${QWEN3_GPU_MEMORY_UTILIZATION:-0.85}
       MODEL_SOURCE: ${MODEL_SOURCE:-modelscope}
@@ -106,6 +108,8 @@ services:
       PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}
       PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-mirrors.aliyun.com}
       VIBEVOICE_MODEL_ID: ${VIBEVOICE_MODEL_ID:-microsoft/VibeVoice-ASR}
+      # Optional: point to a local model directory inside the container to avoid downloading.
+      VIBEVOICE_MODEL_PATH: ${VIBEVOICE_MODEL_PATH:-}
       PORT: 8000
       SERVED_MODEL_NAME: ${VIBEVOICE_SERVED_MODEL_NAME:-vibevoice}
       DTYPE: ${VIBEVOICE_DTYPE:-float16}
