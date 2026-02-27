@@ -34,7 +34,11 @@ class Qwen3RemoteBackend(ASRBackend):
     def load(self) -> None:
         # Lazy init so tests can patch httpx.Client.post without needing a real server.
         if self._client is None:
-            self._client = httpx.Client(timeout=self.timeout_s)
+            # Do not inherit HTTP(S)_PROXY/ALL_PROXY from the environment by default.
+            # Remote ASR servers are usually on localhost/docker networks, and proxy
+            # settings (especially invalid schemes like "socks://") can break client
+            # init before we even send the request.
+            self._client = httpx.Client(timeout=self.timeout_s, trust_env=False)
 
     @property
     def supports_streaming(self) -> bool:
