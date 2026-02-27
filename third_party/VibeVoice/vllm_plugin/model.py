@@ -114,7 +114,20 @@ from vllm.multimodal.processing import (
     PromptUpdate,
     PromptUpdateDetails,
 )
-from vllm.multimodal.profiling import BaseDummyInputsBuilder, ProcessorInputs
+# vLLM multimodal profiling APIs changed across versions.
+# - vLLM >= 0.15: BaseDummyInputsBuilder/ProcessorInputs live under
+#   `vllm.multimodal.processing` (dummy_inputs.py).
+# - older vLLM: they lived under `vllm.multimodal.profiling`.
+try:
+    from vllm.multimodal.processing import BaseDummyInputsBuilder, ProcessorInputs  # type: ignore
+except Exception:  # pragma: no cover
+    try:
+        from vllm.multimodal.processing.dummy_inputs import (  # type: ignore
+            BaseDummyInputsBuilder,
+            ProcessorInputs,
+        )
+    except Exception:
+        from vllm.multimodal.profiling import BaseDummyInputsBuilder, ProcessorInputs  # type: ignore
 
 # Import VibeVoice components
 from vibevoice.modular.modular_vibevoice_tokenizer import (
