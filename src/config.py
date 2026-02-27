@@ -125,7 +125,7 @@ class Settings(BaseSettings):
     # Remote ASR 后端配置（自建 vLLM OpenAI-compatible server）
     # Qwen3-ASR: /v1/chat/completions (audio_url)
     qwen3_asr_base_url: str = "http://localhost:9001"
-    qwen3_asr_model: str = "Qwen/Qwen3-ASR-1.7B"
+    qwen3_asr_model: str = "Qwen/Qwen3-ASR-0.6B"
     qwen3_asr_api_key: str = "EMPTY"
     qwen3_asr_timeout_s: float = 60.0
 

@@ -508,7 +508,7 @@ npm run dev
 
 ```bash
 pip install -U "qwen-asr[vllm]"
-qwen-asr-serve Qwen/Qwen3-ASR-1.7B --host 0.0.0.0 --port 9001 --gpu-memory-utilization 0.8
+qwen-asr-serve Qwen/Qwen3-ASR-0.6B --host 0.0.0.0 --port 9001 --gpu-memory-utilization 0.8
 ```
 
 2) 启动 VibeVoice-ASR（官方 vLLM Docker，自动从 ModelScope 下载）
@@ -537,7 +537,7 @@ docker run -d --gpus all --name vibevoice-vllm \
 ```bash
 ASR_BACKEND=router
 QWEN3_ASR_BASE_URL=http://localhost:9001
-QWEN3_ASR_MODEL=Qwen/Qwen3-ASR-1.7B
+QWEN3_ASR_MODEL=Qwen/Qwen3-ASR-0.6B
 VIBEVOICE_ASR_BASE_URL=http://localhost:9002
 VIBEVOICE_ASR_MODEL=vibevoice
 VIBEVOICE_ASR_USE_CHAT_COMPLETIONS_FALLBACK=true

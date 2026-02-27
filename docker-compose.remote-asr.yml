@@ -67,7 +67,7 @@ services:
       # Optional: PyPI mirror for installing ModelScope inside the container.
       PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}
       PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-mirrors.aliyun.com}
-      QWEN3_MODEL_ID: ${QWEN3_MODEL_ID:-Qwen/Qwen3-ASR-1.7B}
+      QWEN3_MODEL_ID: ${QWEN3_MODEL_ID:-Qwen/Qwen3-ASR-0.6B}
       # Optional: point to a local model directory inside the container to avoid downloading.
       QWEN3_MODEL_PATH: ${QWEN3_MODEL_PATH:-}
       PORT: 8000
@@ -159,7 +159,7 @@ services:
       # Remote ASR backend wiring
       ASR_BACKEND: ${ASR_BACKEND:-router}
       QWEN3_ASR_BASE_URL: http://qwen3-asr:8000
-      QWEN3_ASR_MODEL: ${QWEN3_MODEL_ID:-Qwen/Qwen3-ASR-1.7B}
+      QWEN3_ASR_MODEL: ${QWEN3_MODEL_ID:-Qwen/Qwen3-ASR-0.6B}
       VIBEVOICE_ASR_BASE_URL: http://vibevoice-asr:8000
       VIBEVOICE_ASR_MODEL: ${VIBEVOICE_SERVED_MODEL_NAME:-vibevoice}
       VIBEVOICE_ASR_USE_CHAT_COMPLETIONS_FALLBACK: true

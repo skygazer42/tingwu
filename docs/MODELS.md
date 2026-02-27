@@ -270,7 +270,7 @@ Qwen3-ASR、Whisper 等常见转写服务 **不原生输出 speaker**。
 
 常用配置（`.env`）：
 
-- `QWEN3_MODEL_ID`（默认 `Qwen/Qwen3-ASR-1.7B`）
+- `QWEN3_MODEL_ID`（默认 `Qwen/Qwen3-ASR-0.6B`）
 - `QWEN3_GPU_MEMORY_UTILIZATION`
 
 ### 7.2 VibeVoice-ASR（`vibevoice-asr` + `tingwu-vibevoice`）

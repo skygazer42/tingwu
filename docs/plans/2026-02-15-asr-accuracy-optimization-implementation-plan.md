@@ -29,7 +29,7 @@ These items are already done in the current workspace:
 - ONNX + GGUF backends now accept TingWu-standard raw PCM16LE bytes (fixes HTTP/chunking compatibility) (`src/models/backends/onnx.py`, `src/models/backends/gguf/backend.py`)
 - Per-request tuning (`asr_options`) is supported + allowlisted (`src/api/asr_options.py`) and plumbed through API → engine → backend
 - Multi-model per-port container deployment with on-demand profiles (`docker-compose.models.yml`, `scripts/start.sh`)
-- Qwen3-ASR default model is `Qwen/Qwen3-ASR-1.7B` (compose + scripts + Settings)
+- Qwen3-ASR default model is `Qwen/Qwen3-ASR-0.6B` (compose + scripts + Settings)
 
 If you want a clean branch/worktree flow + commits per task, run this plan in a worktree.
 

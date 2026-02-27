@@ -6,7 +6,7 @@ def test_qwen3_remote_backend_calls_chat_completions_and_parses_asr_text_tag():
 
     backend = Qwen3RemoteBackend(
         base_url="http://fake",
-        model="Qwen/Qwen3-ASR-1.7B",
+        model="Qwen/Qwen3-ASR-0.6B",
         api_key="EMPTY",
         timeout_s=1.0,
     )
@@ -29,7 +29,7 @@ def test_qwen3_remote_backend_calls_chat_completions_and_parses_asr_text_tag():
         called_url = post.call_args.args[0]
         assert called_url == "http://fake/v1/chat/completions"
         called_json = post.call_args.kwargs["json"]
-        assert called_json["model"] == "Qwen/Qwen3-ASR-1.7B"
+        assert called_json["model"] == "Qwen/Qwen3-ASR-0.6B"
 
 
 def test_qwen3_remote_backend_formats_hotwords_as_a_context_hint():
@@ -37,7 +37,7 @@ def test_qwen3_remote_backend_formats_hotwords_as_a_context_hint():
 
     backend = Qwen3RemoteBackend(
         base_url="http://fake",
-        model="Qwen/Qwen3-ASR-1.7B",
+        model="Qwen/Qwen3-ASR-0.6B",
         api_key="EMPTY",
         timeout_s=1.0,
     )
