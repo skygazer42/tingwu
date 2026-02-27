@@ -1,10 +1,18 @@
 import os
 from pathlib import Path
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional, Literal
 
 class Settings(BaseSettings):
     """应用配置"""
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        # Repo root `.env` is shared with docker-compose and may contain many
+        # non-runtime keys (PORT_* etc). Ignore unknown keys instead of failing
+        # on import/tests.
+        extra="ignore",
+    )
     # 服务配置
     app_name: str = "TingWu Speech Service"
     version: str = "1.0.0"
@@ -224,10 +232,6 @@ class Settings(BaseSettings):
     stream_dedup_enable: bool = True             # 启用流式去重
     stream_dedup_overlap: int = 5                # 重叠检查字符数
     stream_dedup_tolerance: int = 1              # 模糊匹配容差
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
 
     @property
     def speaker_unsupported_behavior_effective(self) -> Literal["error", "fallback", "ignore"]:
