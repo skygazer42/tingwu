@@ -21,6 +21,8 @@ cd "${ROOT_DIR}"
 
 PORTS="${PORTS:-8101 8102 8103 8104 8105 8201 8202}"
 DIARIZER_PORT="${DIARIZER_PORT:-8300}"
+REMOTE_ASR_PORTS="${REMOTE_ASR_PORTS:-9001 9002}"
+SKIP_REMOTE_ASR_CHECKS="${SKIP_REMOTE_ASR_CHECKS:-false}"
 TIMEOUT_S="${TIMEOUT_S:-10}"
 AUDIO="${AUDIO:-data/benchmark/test_short.mp3}"
 
@@ -137,9 +139,25 @@ _test_diarizer() {
 
 echo "TingWu smoke test"
 echo "- PORTS=${PORTS}"
+echo "- REMOTE_ASR_PORTS=${REMOTE_ASR_PORTS} (skip=${SKIP_REMOTE_ASR_CHECKS})"
 echo "- AUDIO=${AUDIO}"
 echo "- TIMEOUT_S=${TIMEOUT_S}"
 echo ""
+
+if [ "${SKIP_REMOTE_ASR_CHECKS}" != "true" ] && [ -n "${REMOTE_ASR_PORTS}" ]; then
+  echo "=============================="
+  echo "Remote ASR readiness"
+  echo "=============================="
+  for rp in ${REMOTE_ASR_PORTS}; do
+    base="http://localhost:${rp}"
+    if _curl_json "${base}/v1/models"; then
+      _ok "${base} GET /v1/models"
+    else
+      _fail "${base} GET /v1/models"
+    fi
+  done
+  echo ""
+fi
 
 for p in ${PORTS}; do
   _test_one_base "http://localhost:${p}"

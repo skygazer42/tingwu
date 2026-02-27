@@ -265,6 +265,9 @@ services:
     shm_size: "4gb"
     environment:
       <<: *proxy-env
+      # Optional: PyPI mirror for installing ModelScope inside the container.
+      PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}
+      PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-mirrors.aliyun.com}
       QWEN3_MODEL_ID: ${QWEN3_MODEL_ID:-Qwen/Qwen3-ASR-1.7B}
       PORT: 8000
       GPU_MEMORY_UTILIZATION: ${QWEN3_GPU_MEMORY_UTILIZATION:-0.85}

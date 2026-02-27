@@ -2,6 +2,7 @@
 set -euo pipefail
 
 MODEL_ID="${VIBEVOICE_MODEL_ID:-microsoft/VibeVoice-ASR}"
+MODEL_PATH_OVERRIDE="${VIBEVOICE_MODEL_PATH:-}"
 PORT="${PORT:-8000}"
 SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-vibevoice}"
 DTYPE="${DTYPE:-float16}"
@@ -13,6 +14,9 @@ FFMPEG_MAX_CONCURRENCY="${VIBEVOICE_FFMPEG_MAX_CONCURRENCY:-16}"
 MODEL_SOURCE="${MODEL_SOURCE:-modelscope}"
 
 echo "[vibevoice-asr] MODEL_ID=${MODEL_ID}"
+if [ -n "${MODEL_PATH_OVERRIDE}" ]; then
+  echo "[vibevoice-asr] VIBEVOICE_MODEL_PATH=${MODEL_PATH_OVERRIDE}"
+fi
 echo "[vibevoice-asr] PORT=${PORT}"
 echo "[vibevoice-asr] SERVED_MODEL_NAME=${SERVED_MODEL_NAME}"
 echo "[vibevoice-asr] DTYPE=${DTYPE}"
@@ -24,6 +28,14 @@ echo "[vibevoice-asr] VIBEVOICE_FFMPEG_MAX_CONCURRENCY=${FFMPEG_MAX_CONCURRENCY}
 echo "[vibevoice-asr] MODEL_SOURCE=${MODEL_SOURCE}"
 
 export VIBEVOICE_FFMPEG_MAX_CONCURRENCY="${FFMPEG_MAX_CONCURRENCY}"
+
+if [ ! -f "/app/pyproject.toml" ] && [ ! -f "/app/setup.py" ]; then
+  echo "[vibevoice-asr] ERROR: /app does not look like a VibeVoice repo." >&2
+  echo "[vibevoice-asr] Please set VIBEVOICE_REPO_PATH to a directory containing vllm_plugin + python package." >&2
+  echo "[vibevoice-asr] Current /app contents:" >&2
+  ls -la /app >&2 || true
+  exit 2
+fi
 
 apt-get -o Acquire::Retries=3 update || {
   echo "[apt] update failed; falling back to http://mirrors.aliyun.com/ubuntu" >&2
@@ -40,22 +52,66 @@ apt-get install -y ffmpeg libsndfile1
 # Install VibeVoice from mounted repo with vLLM support.
 python3 -m pip install -e "/app[vllm]"
 
-# Download model weights (ModelScope or HuggingFace).
-if [ "${MODEL_SOURCE}" = "modelscope" ]; then
+_ensure_modelscope() {
+  if python3 -c "import modelscope" >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "[vibevoice-asr] ModelScope python package not found; installing..." >&2
+  python3 -m pip install -q modelscope || true
+  if python3 -c "import modelscope" >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "[vibevoice-asr] WARNING: failed to import modelscope after install" >&2
+  return 1
+}
+
+_download_modelscope() {
+  python3 - <<PY
+import sys
+try:
+    from modelscope import snapshot_download
+    path = snapshot_download("${MODEL_ID}")
+    if path:
+        print(path)
+except Exception as e:
+    print(f"[vibevoice-asr] ModelScope snapshot_download failed: {e}", file=sys.stderr)
+PY
+}
+
+_download_huggingface() {
+  python3 - <<PY
+import sys
+try:
+    from huggingface_hub import snapshot_download
+    path = snapshot_download("${MODEL_ID}")
+    if path:
+        print(path)
+except Exception as e:
+    print(f"[vibevoice-asr] HuggingFace snapshot_download failed: {e}", file=sys.stderr)
+PY
+}
+
+# Download model weights (ModelScope / HuggingFace / local override).
+MODEL_PATH=""
+if [ -n "${MODEL_PATH_OVERRIDE}" ]; then
+  MODEL_PATH="${MODEL_PATH_OVERRIDE}"
+elif [ "${MODEL_SOURCE}" = "modelscope" ]; then
   echo "[vibevoice-asr] Downloading model from ModelScope..."
-  pip install -q modelscope 2>/dev/null || true
-  MODEL_PATH="$(python3 - <<PY
-from modelscope import snapshot_download
-print(snapshot_download('${MODEL_ID}'))
-PY
-)"
-else
-  echo "[vibevoice-asr] Downloading model from HuggingFace..."
-  MODEL_PATH="$(python3 - <<PY
-from huggingface_hub import snapshot_download
-print(snapshot_download('${MODEL_ID}'))
-PY
-)"
+  if _ensure_modelscope; then
+    MODEL_PATH="$(_download_modelscope || true)"
+  fi
+fi
+
+if [ -z "${MODEL_PATH}" ]; then
+  echo "[vibevoice-asr] Falling back to HuggingFace download..." >&2
+  MODEL_PATH="$(_download_huggingface || true)"
+fi
+
+if [ -z "${MODEL_PATH}" ]; then
+  echo "[vibevoice-asr] ERROR: failed to resolve model path." >&2
+  echo "[vibevoice-asr] - If you are offline: mount weights and set VIBEVOICE_MODEL_PATH=/path" >&2
+  echo "[vibevoice-asr] - Or set MODEL_SOURCE=modelscope and ensure modelscope is installable" >&2
+  exit 2
 fi
 
 echo "[vibevoice-asr] MODEL_PATH=${MODEL_PATH}"

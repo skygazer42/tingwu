@@ -64,6 +64,9 @@ services:
     shm_size: "4gb"
     environment:
       <<: *proxy-env
+      # Optional: PyPI mirror for installing ModelScope inside the container.
+      PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}
+      PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-mirrors.aliyun.com}
       QWEN3_MODEL_ID: ${QWEN3_MODEL_ID:-Qwen/Qwen3-ASR-1.7B}
       PORT: 8000
       GPU_MEMORY_UTILIZATION: ${QWEN3_GPU_MEMORY_UTILIZATION:-0.85}
@@ -87,9 +90,9 @@ services:
       - "9002:8000"
     ipc: host
     volumes:
-      # Mount local VibeVoice repo (contains vllm_plugin + python package)
-      # NOTE: set VIBEVOICE_REPO_PATH to your local VibeVoice checkout path.
-      - ${VIBEVOICE_REPO_PATH:-./VibeVoice}:/app
+      # Mount a local VibeVoice repo directory that contains vllm_plugin + python package.
+      # Default: use the vendored snapshot under ./third_party/VibeVoice.
+      - ${VIBEVOICE_REPO_PATH:-./third_party/VibeVoice}:/app
       - huggingface-cache:/root/.cache/huggingface
       - modelscope-cache:/root/.cache/modelscope
       - ./docker/remote-asr/start_vibevoice_asr.sh:/start_vibevoice_asr.sh:ro
@@ -99,6 +102,9 @@ services:
     shm_size: "4gb"
     environment:
       <<: *proxy-env
+      # Optional: use a PyPI mirror inside the container for installing the mounted VibeVoice package.
+      PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}
+      PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-mirrors.aliyun.com}
       VIBEVOICE_MODEL_ID: ${VIBEVOICE_MODEL_ID:-microsoft/VibeVoice-ASR}
       PORT: 8000
       SERVED_MODEL_NAME: ${VIBEVOICE_SERVED_MODEL_NAME:-vibevoice}
