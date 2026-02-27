@@ -86,15 +86,14 @@ async def get_all_config():
 
     返回所有配置项，包括服务启动后不可修改的项。
     """
-    config = {}
-    for key in dir(settings):
-        if not key.startswith('_') and not callable(getattr(settings, key)):
-            value = getattr(settings, key)
-            # 转换 Path 为字符串
-            if hasattr(value, '__fspath__'):
-                value = str(value)
-            config[key] = value
-    return {"config": config, "mutable_keys": list(MUTABLE_CONFIG_KEYS)}
+    # Avoid iterating over `dir(settings)`, which includes many Pydantic internals
+    # (e.g. `model_fields`) that are not JSON-serializable and can crash this endpoint.
+    config = settings.model_dump(mode="json")
+
+    # Expose helpful computed properties explicitly.
+    config["speaker_unsupported_behavior_effective"] = settings.speaker_unsupported_behavior_effective
+
+    return {"config": config, "mutable_keys": sorted(MUTABLE_CONFIG_KEYS)}
 
 
 @router.post("", response_model=ConfigResponse)

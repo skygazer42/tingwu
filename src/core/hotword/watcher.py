@@ -152,16 +152,39 @@ class HotwordWatcher:
         if not WATCHDOG_AVAILABLE or not self._callbacks:
             return
 
-        self._observer = Observer()
-        self._observer.schedule(self._handler, str(self.watch_dir), recursive=False)
-        self._observer.start()
-        logger.info(f"Started watching hotword files in {self.watch_dir}")
+        try:
+            self._observer = Observer()
+            self._observer.schedule(self._handler, str(self.watch_dir), recursive=False)
+            self._observer.start()
+            logger.info(f"Started watching hotword files in {self.watch_dir}")
+        except Exception as e:
+            # Common failure modes:
+            # - inotify watch limit reached (OSError: [Errno 28] ENOSPC)
+            # - permission errors in restricted environments
+            # In these cases hotword watching is optional; degrade gracefully.
+            logger.warning(f"Failed to start hotword file watcher (disabled): {e}")
+            try:
+                if self._observer is not None:
+                    self._observer.stop()
+            except Exception:
+                pass
+            self._observer = None
 
     def stop(self):
         """停止监视器"""
         if self._observer is not None:
-            self._observer.stop()
-            self._observer.join(timeout=5)
+            try:
+                self._observer.stop()
+            except Exception:
+                pass
+
+            try:
+                # `join()` raises if the thread was never started; guard it.
+                if getattr(self._observer, "is_alive", None) and self._observer.is_alive():
+                    self._observer.join(timeout=5)
+            except Exception:
+                pass
+
             self._observer = None
             logger.info("Stopped hotword file watcher")
 
@@ -199,7 +222,10 @@ def setup_hotword_watcher(
     global _watcher
 
     if _watcher is not None:
-        _watcher.stop()
+        try:
+            _watcher.stop()
+        except Exception:
+            pass
 
     _watcher = HotwordWatcher(
         watch_dir=watch_dir,
@@ -213,7 +239,12 @@ def setup_hotword_watcher(
         rules_filename=rules_filename,
         rectify_filename=rectify_filename,
     )
-    _watcher.start()
+    try:
+        _watcher.start()
+    except Exception as e:
+        # Defensive: `HotwordWatcher.start()` should already be best-effort, but
+        # keep the global setup resilient.
+        logger.warning(f"Failed to start global hotword watcher (ignored): {e}")
     return _watcher
 
 
