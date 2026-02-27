@@ -1,9 +1,35 @@
-"""快速 RAG 检索模块"""
+"""快速 RAG 检索模块
+
+This module uses Numba JIT to accelerate fuzzy substring distance over
+phoneme-id sequences. In some environments (notably certain ONNX runtime
+images), the Numba stack can be present but broken due to binary or version
+incompatibilities (e.g. NumPy/Numba mismatch). That must not crash the API.
+
+We therefore treat the JIT path as best-effort and fall back to a pure-Python
+implementation when the JIT path errors.
+"""
+
+from __future__ import annotations
+
 from collections import defaultdict
 from typing import List, Dict, Tuple
 
 import numpy as np
-from numba import njit
+
+try:
+    from numba import njit
+
+    NUMBA_AVAILABLE = True
+except Exception:  # pragma: no cover
+    # Keep runtime resilient even if numba/llvmlite cannot be imported.
+    NUMBA_AVAILABLE = False
+
+    def njit(*_args, **_kwargs):
+        def _decorator(fn):
+            return fn
+
+        return _decorator
+
 from src.core.hotword.phoneme import Phoneme
 
 @njit(cache=True)
@@ -35,6 +61,8 @@ class FastRAG:
         self.ph_to_id: Dict[str, int] = {}
         self.index: Dict[int, List[Tuple[str, any]]] = defaultdict(list)
         self.hotword_count = 0
+        self._numba_enabled = bool(NUMBA_AVAILABLE)
+        self._numba_error_logged = False
 
     def _encode(self, phs: List[Phoneme]):
         """将音素序列编码为整数序列"""
@@ -75,7 +103,27 @@ class FastRAG:
             if hw in seen or len(cands) > len(input_codes) + 3:
                 continue
             seen.add(hw)
-            dist = _fuzzy_substring_numba(input_codes, cands)
+            dist = None
+            if self._numba_enabled:
+                try:
+                    dist = _fuzzy_substring_numba(input_codes, cands)
+                except Exception as e:
+                    # If JIT fails at runtime, disable it for the rest of this
+                    # process to avoid crashing transcription requests.
+                    self._numba_enabled = False
+                    if not self._numba_error_logged:
+                        self._numba_error_logged = True
+                        msg = (
+                            f"FastRAG numba path failed and is now disabled: {e}. "
+                            "Falling back to pure-Python distance (slower)."
+                        )
+                        # Import logger lazily to avoid circular imports.
+                        import logging
+
+                        logging.getLogger(__name__).warning(msg)
+
+            if dist is None:
+                dist = self._python_dist(input_codes, cands)
             score = 1.0 - (dist / len(cands))
             if score >= self.threshold:
                 results.append((hw, round(float(score), 3)))
