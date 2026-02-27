@@ -87,17 +87,12 @@ docker compose up -d
 - 每个后端一个独立端口，方便 A/B 对比和基准测试
 - 支持 Qwen3-ASR、VibeVoice-ASR、Router 等远程模型后端
 
-推荐用一键脚本（内部就是 `docker compose`，只是帮你少记命令）：
 
-```bash
-./scripts/start.sh models <profile>
-```
-
-示例（按需启动）：
+（按需启动）：
 
 ```bash
 # 0) External diarizer (pyannote) -> http://localhost:8300
-# 可选：让任意后端（包括 Whisper/Qwen3）也能输出 speaker_turns
+# 让任意后端（包括 Whisper/Qwen3）也能输出 speaker_turns
 docker compose -f docker-compose.models.yml --profile diarizer up -d
 
 # 1) PyTorch Paraformer (GPU) -> http://localhost:8101
@@ -125,11 +120,9 @@ docker compose -f docker-compose.models.yml --profile qwen3 up -d
 # 默认使用 ./third_party/VibeVoice（仓库内置最小快照）；权重从 ModelScope 下载
 docker compose -f docker-compose.models.yml --profile vibevoice up -d
 
-# 8) Router (Qwen3 + VibeVoice 自动路由) -> http://localhost:8200
-docker compose -f docker-compose.models.yml --profile router up -d
 ```
 
-##### VibeVoice / Router 额外准备（一次性）
+##### VibeVoice 
 
 `vibevoice-asr` 使用官方 `vllm/vllm-openai` 镜像启动 vLLM 服务，但它需要把 **VibeVoice 仓库挂载进容器**（用于安装 `vllm_plugin` 等 Python 包）。
 
@@ -149,7 +142,7 @@ cd TingWu
 git -c http.version=HTTP/1.1 clone --depth 1 https://github.com/microsoft/VibeVoice.git ./VibeVoice
 ```
 
-2) （可选）提前拉取 vLLM 镜像（网络慢时建议）：
+2) 提前拉取 vLLM 镜像（网络慢时建议）：
 
 ```bash
 docker pull vllm/vllm-openai:latest
