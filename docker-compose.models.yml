@@ -227,10 +227,12 @@ services:
       DEVICE: ${GGUF_DEVICE:-cpu}
       NGPU: ${GGUF_NGPU:-0}
       NCPU: ${GGUF_NCPU:-8}
-      GGUF_ENCODER_PATH: ${GGUF_ENCODER_PATH:-/app/data/models/Fun-ASR-Nano-Encoder-Adaptor.fp32.onnx}
-      GGUF_CTC_PATH: ${GGUF_CTC_PATH:-/app/data/models/Fun-ASR-Nano-CTC.int8.onnx}
-      GGUF_DECODER_PATH: ${GGUF_DECODER_PATH:-/app/data/models/Fun-ASR-Nano-Decoder.q8_0.gguf}
-      GGUF_TOKENS_PATH: ${GGUF_TOKENS_PATH:-/app/data/models/tokens.txt}
+      # Preferred layout: /app/data/models/Fun-ASR-Nano-GGUF/*
+      # (Backwards compatible: the GGUF backend will also search /app/data/models/).
+      GGUF_ENCODER_PATH: ${GGUF_ENCODER_PATH:-/app/data/models/Fun-ASR-Nano-GGUF/Fun-ASR-Nano-Encoder-Adaptor.fp16.onnx}
+      GGUF_CTC_PATH: ${GGUF_CTC_PATH:-/app/data/models/Fun-ASR-Nano-GGUF/Fun-ASR-Nano-CTC.int8.onnx}
+      GGUF_DECODER_PATH: ${GGUF_DECODER_PATH:-/app/data/models/Fun-ASR-Nano-GGUF/Fun-ASR-Nano-Decoder.q8_0.gguf}
+      GGUF_TOKENS_PATH: ${GGUF_TOKENS_PATH:-/app/data/models/Fun-ASR-Nano-GGUF/tokens.txt}
       # Default llama.cpp shared libs are bundled into the GGUF image under /app/llama_cpp/lib.
       # If you prefer to provide your own builds, set GGUF_LIB_DIR=/app/data/models/bin and
       # put the .so files into ./data/models/bin on the host.

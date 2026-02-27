@@ -106,10 +106,20 @@ class Settings(BaseSettings):
     speaker_external_diarizer_max_turns: int = 200
 
     # GGUF 后端配置 (FunASR-Nano-GGUF)
-    gguf_encoder_path: str = "models/Fun-ASR-Nano-Encoder-Adaptor.fp32.onnx"
-    gguf_ctc_path: str = "models/Fun-ASR-Nano-CTC.int8.onnx"
-    gguf_decoder_path: str = "models/Fun-ASR-Nano-Decoder.q8_0.gguf"
-    gguf_tokens_path: str = "models/tokens.txt"
+    # Default layout (recommended):
+    #   data/models/Fun-ASR-Nano-GGUF/
+    #     Fun-ASR-Nano-Encoder-Adaptor.fp16.onnx
+    #     Fun-ASR-Nano-CTC.int8.onnx
+    #     Fun-ASR-Nano-Decoder.q8_0.gguf
+    #     tokens.txt
+    #
+    # Notes:
+    # - Older guides placed these files directly under data/models/.
+    # - The GGUF backend includes runtime fallback resolution to support both layouts.
+    gguf_encoder_path: str = "models/Fun-ASR-Nano-GGUF/Fun-ASR-Nano-Encoder-Adaptor.fp16.onnx"
+    gguf_ctc_path: str = "models/Fun-ASR-Nano-GGUF/Fun-ASR-Nano-CTC.int8.onnx"
+    gguf_decoder_path: str = "models/Fun-ASR-Nano-GGUF/Fun-ASR-Nano-Decoder.q8_0.gguf"
+    gguf_tokens_path: str = "models/Fun-ASR-Nano-GGUF/tokens.txt"
     gguf_lib_dir: str = "models/bin"  # llama.cpp 库目录
 
     # Remote ASR 后端配置（自建 vLLM OpenAI-compatible server）

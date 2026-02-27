@@ -117,8 +117,8 @@ GGUF 后端适合“离线/本地 CPU”使用，但它 **不会自动下载模�
 默认期望你在项目根目录准备：
 
 ```text
-./data/models/
-  Fun-ASR-Nano-Encoder-Adaptor.fp32.onnx
+./data/models/Fun-ASR-Nano-GGUF/
+  Fun-ASR-Nano-Encoder-Adaptor.fp16.onnx
   Fun-ASR-Nano-CTC.int8.onnx
   Fun-ASR-Nano-Decoder.q8_0.gguf
   tokens.txt

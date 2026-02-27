@@ -16,6 +16,7 @@ from .dataclasses import GGUFConfig, Timings
 from .onnx_utils import load_onnx_models, encode_audio
 from .ctc_utils import load_ctc_tokens, decode_ctc, align_timestamps
 from .llama_cpp import llama_lib, llama_token, llama_batch, ByteDecoder, get_token_embeddings_gguf
+from src.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +28,8 @@ class GGUFBackend(ASRBackend):
     移植自 CapsWriter-Offline。
 
     需要的模型文件:
-    - encoder ONNX: Fun-ASR-Nano-Encoder-Adaptor.fp32.onnx
-    - CTC ONNX: Fun-ASR-Nano-CTC.int8.onnx
+    - encoder ONNX: Fun-ASR-Nano-Encoder-Adaptor.(fp16|fp32|int8).onnx
+    - CTC ONNX: Fun-ASR-Nano-CTC.(int8|fp16|fp32).onnx
     - decoder GGUF: Fun-ASR-Nano-Decoder.q8_0.gguf
     - tokens.txt: CTC 词表
 
@@ -63,11 +64,44 @@ class GGUFBackend(ASRBackend):
             n_threads_batch: 批处理线程数
             n_ubatch: llama.cpp ubatch 大小
         """
+        resolved_encoder_path = self._resolve_artifact_path(
+            encoder_path,
+            kind="encoder",
+            candidate_filenames=[
+                "Fun-ASR-Nano-Encoder-Adaptor.fp16.onnx",
+                "Fun-ASR-Nano-Encoder-Adaptor.fp32.onnx",
+                "Fun-ASR-Nano-Encoder-Adaptor.int8.onnx",
+            ],
+        )
+        resolved_ctc_path = self._resolve_artifact_path(
+            ctc_path,
+            kind="ctc",
+            candidate_filenames=[
+                "Fun-ASR-Nano-CTC.int8.onnx",
+                "Fun-ASR-Nano-CTC.fp16.onnx",
+                "Fun-ASR-Nano-CTC.fp32.onnx",
+            ],
+        )
+        resolved_decoder_path = self._resolve_artifact_path(
+            decoder_path,
+            kind="decoder",
+            candidate_filenames=[
+                "Fun-ASR-Nano-Decoder.q8_0.gguf",
+            ],
+        )
+        resolved_tokens_path = self._resolve_artifact_path(
+            tokens_path,
+            kind="tokens",
+            candidate_filenames=[
+                "tokens.txt",
+            ],
+        )
+
         self.config = GGUFConfig(
-            encoder_onnx_path=encoder_path,
-            ctc_onnx_path=ctc_path,
-            decoder_gguf_path=decoder_path,
-            tokens_path=tokens_path,
+            encoder_onnx_path=resolved_encoder_path,
+            ctc_onnx_path=resolved_ctc_path,
+            decoder_gguf_path=resolved_decoder_path,
+            tokens_path=resolved_tokens_path,
             n_predict=n_predict,
             n_threads=n_threads,
             n_threads_batch=n_threads_batch,
@@ -76,7 +110,7 @@ class GGUFBackend(ASRBackend):
 
         # 默认库目录为模型目录下的 bin 子目录
         if lib_dir is None:
-            lib_dir = Path(decoder_path).parent / "bin"
+            lib_dir = Path(resolved_decoder_path).parent / "bin"
         self.lib_dir = Path(lib_dir)
 
         # 运行时对象
@@ -91,6 +125,86 @@ class GGUFBackend(ASRBackend):
 
         self._loaded = False
         self._stop_tokens = [151643, 151645]  # Qwen2.5 stop tokens
+
+    @staticmethod
+    def _resolve_artifact_path(
+        raw_path: str,
+        *,
+        kind: str,
+        candidate_filenames: List[str],
+    ) -> str:
+        """Resolve GGUF artifact paths for common layouts.
+
+        Users may provide absolute paths via env vars (Docker), or relative paths
+        in local runs. Additionally, the model artifacts are commonly placed
+        under:
+
+          data/models/Fun-ASR-Nano-GGUF/
+
+        This helper keeps backward compatibility with older defaults that used
+        `data/models/` directly.
+        """
+        raw = str(raw_path or "").strip()
+        if not raw:
+            return raw
+
+        # Candidate directories to probe when the configured path doesn't exist.
+        candidate_dirs: List[Path] = [
+            settings.models_dir / "Fun-ASR-Nano-GGUF",
+            settings.models_dir,
+        ]
+
+        attempted: List[Path] = []
+
+        def _probe(path: Path) -> Optional[Path]:
+            attempted.append(path)
+            if path.is_file():
+                return path
+            if path.is_dir():
+                for name in candidate_filenames:
+                    p = path / name
+                    attempted.append(p)
+                    if p.is_file():
+                        return p
+            return None
+
+        # 1) Try the configured value as-is (absolute or relative).
+        p0 = Path(raw)
+        found = _probe(p0)
+        if found:
+            return str(found)
+
+        # 2) If relative, try common anchors: repo base, data_dir, models_dir.
+        if not p0.is_absolute():
+            anchors = [settings.base_dir, settings.data_dir, settings.models_dir]
+            for anchor in anchors:
+                found = _probe(anchor / p0)
+                if found:
+                    logger.info(f"[gguf] Resolved {kind} path: {raw} -> {found}")
+                    return str(found)
+
+        # 3) Search by filename in common model directories.
+        for d in candidate_dirs:
+            for name in candidate_filenames:
+                found = _probe(d / name)
+                if found:
+                    logger.info(f"[gguf] Resolved {kind} path: {raw} -> {found}")
+                    return str(found)
+
+        # Keep original for error reporting, but normalize relative paths to data_dir.
+        if not p0.is_absolute():
+            normalized = settings.data_dir / p0
+            logger.warning(
+                f"[gguf] {kind} artifact not found at configured path '{raw}'. "
+                f"Tried {len(attempted)} candidates; keeping '{normalized}'."
+            )
+            return str(normalized)
+
+        logger.warning(
+            f"[gguf] {kind} artifact not found at configured path '{raw}'. "
+            f"Tried {len(attempted)} candidates; keeping '{raw}'."
+        )
+        return raw
 
     def load(self) -> None:
         """加载模型"""
