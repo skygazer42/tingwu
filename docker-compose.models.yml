@@ -272,6 +272,10 @@ services:
       # Optional: point to a local model directory inside the container to avoid downloading.
       # Example: QWEN3_MODEL_PATH=/root/.cache/modelscope/hub/models/Qwen/Qwen3-ASR-0___6B
       QWEN3_MODEL_PATH: ${QWEN3_MODEL_PATH:-}
+      # vLLM max context length. The upstream default is 65536, which can require
+      # a large KV cache. Use a smaller default so Qwen3-ASR can co-exist with
+      # other GPU services (e.g. VibeVoice) on a single card.
+      QWEN3_MAX_MODEL_LEN: ${QWEN3_MAX_MODEL_LEN:-32768}
       PORT: 8000
       GPU_MEMORY_UTILIZATION: ${QWEN3_GPU_MEMORY_UTILIZATION:-0.85}
       MODEL_SOURCE: ${MODEL_SOURCE:-modelscope}

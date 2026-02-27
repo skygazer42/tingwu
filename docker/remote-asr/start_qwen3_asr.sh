@@ -5,6 +5,7 @@ MODEL_ID="${QWEN3_MODEL_ID:-Qwen/Qwen3-ASR-0.6B}"
 MODEL_PATH_OVERRIDE="${QWEN3_MODEL_PATH:-}"
 PORT="${PORT:-8000}"
 GPU_MEM_UTIL="${GPU_MEMORY_UTILIZATION:-0.85}"
+MAX_MODEL_LEN="${QWEN3_MAX_MODEL_LEN:-}"
 MODEL_SOURCE="${MODEL_SOURCE:-modelscope}"
 
 echo "[qwen3-asr] MODEL_ID=${MODEL_ID}"
@@ -13,6 +14,9 @@ if [ -n "${MODEL_PATH_OVERRIDE}" ]; then
 fi
 echo "[qwen3-asr] PORT=${PORT}"
 echo "[qwen3-asr] GPU_MEMORY_UTILIZATION=${GPU_MEM_UTIL}"
+if [ -n "${MAX_MODEL_LEN}" ]; then
+  echo "[qwen3-asr] QWEN3_MAX_MODEL_LEN=${MAX_MODEL_LEN}"
+fi
 echo "[qwen3-asr] MODEL_SOURCE=${MODEL_SOURCE}"
 
 _ensure_modelscope() {
@@ -63,8 +67,20 @@ else
   MODEL_PATH="${MODEL_ID}"
 fi
 
-exec qwen-asr-serve "${MODEL_PATH}" \
-  --host 0.0.0.0 \
-  --port "${PORT}" \
-  --gpu-memory-utilization "${GPU_MEM_UTIL}" \
+args=(
+  "${MODEL_PATH}"
+  --host 0.0.0.0
+  --port "${PORT}"
+  --gpu-memory-utilization "${GPU_MEM_UTIL}"
   --trust-remote-code
+)
+
+if [ -n "${MAX_MODEL_LEN}" ]; then
+  if qwen-asr-serve --help 2>&1 | grep -q -- "--max-model-len"; then
+    args+=(--max-model-len "${MAX_MODEL_LEN}")
+  else
+    echo "[qwen3-asr] WARNING: qwen-asr-serve does not support --max-model-len; ignoring QWEN3_MAX_MODEL_LEN" >&2
+  fi
+fi
+
+exec qwen-asr-serve "${args[@]}"

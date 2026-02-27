@@ -70,6 +70,9 @@ services:
       QWEN3_MODEL_ID: ${QWEN3_MODEL_ID:-Qwen/Qwen3-ASR-0.6B}
       # Optional: point to a local model directory inside the container to avoid downloading.
       QWEN3_MODEL_PATH: ${QWEN3_MODEL_PATH:-}
+      # vLLM max context length. Keep this smaller by default so the server can
+      # start under tighter GPU memory budgets.
+      QWEN3_MAX_MODEL_LEN: ${QWEN3_MAX_MODEL_LEN:-32768}
       PORT: 8000
       GPU_MEMORY_UTILIZATION: ${QWEN3_GPU_MEMORY_UTILIZATION:-0.85}
       MODEL_SOURCE: ${MODEL_SOURCE:-modelscope}

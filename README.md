@@ -538,6 +538,8 @@ docker run -d --gpus all --name vibevoice-vllm \
 ASR_BACKEND=router
 QWEN3_ASR_BASE_URL=http://localhost:9001
 QWEN3_ASR_MODEL=Qwen/Qwen3-ASR-0.6B
+# 可选：降低上下文长度，减少 KV cache 显存占用（更容易和 VibeVoice 共存）
+# QWEN3_MAX_MODEL_LEN=32768
 VIBEVOICE_ASR_BASE_URL=http://localhost:9002
 VIBEVOICE_ASR_MODEL=vibevoice
 VIBEVOICE_ASR_USE_CHAT_COMPLETIONS_FALLBACK=true
