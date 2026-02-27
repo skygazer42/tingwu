@@ -50,7 +50,9 @@ if [ -n "${MODEL_PATH_OVERRIDE}" ]; then
 elif [ "${MODEL_SOURCE}" = "modelscope" ]; then
   echo "[qwen3-asr] Downloading model from ModelScope..."
   if _ensure_modelscope; then
-    MODEL_PATH="$(_download_modelscope || true)"
+    # ModelScope may print progress/info lines to stdout; keep only the last non-empty line
+    # as the actual snapshot path.
+    MODEL_PATH="$(_download_modelscope | awk 'NF{line=$0} END{print line}' || true)"
   fi
 fi
 

@@ -6,6 +6,7 @@ integration for speech-to-text inference.
 """
 
 from typing import List, Optional, Tuple, Union, Dict, Any, Iterable, Mapping, Sequence
+import logging
 import os
 import torch
 import torch.nn as nn
@@ -45,28 +46,50 @@ def _ffmpeg_load_file(filepath) -> tuple[np.ndarray, int]:
     audio = normalizer(audio)
     return audio, sr
 
-# Register FFmpeg-based audio loader
-import vllm.multimodal.audio as _vllm_audio_module
-_OriginalAudioMediaIO = _vllm_audio_module.AudioMediaIO
+logger = logging.getLogger(__name__)
 
-class _PatchedAudioMediaIO(_OriginalAudioMediaIO):
-    """AudioMediaIO implementation using FFmpeg for audio decoding."""
-    
-    def load_bytes(self, data: bytes) -> tuple[np.ndarray, int]:
-        return _ffmpeg_load_bytes(data)
-    
-    def load_base64(self, media_type: str, data: str) -> tuple[np.ndarray, int]:
-        return _ffmpeg_load_bytes(base64.b64decode(data))
-    
-    def load_file(self, filepath) -> tuple[np.ndarray, int]:
-        return _ffmpeg_load_file(filepath)
+# Register FFmpeg-based audio loader.
+#
+# NOTE: vLLM's multimodal audio API has changed across versions. Some versions
+# expose `vllm.multimodal.audio.AudioMediaIO`, others do not. This patch is
+# best-effort and must not crash plugin import (otherwise the OpenAI server
+# cannot start).
+try:
+    import vllm.multimodal.audio as _vllm_audio_module
 
-# Replace globally
-_vllm_audio_module.AudioMediaIO = _PatchedAudioMediaIO
+    _OriginalAudioMediaIO = getattr(_vllm_audio_module, "AudioMediaIO", None)
+    if _OriginalAudioMediaIO is None:
+        raise AttributeError("vllm.multimodal.audio.AudioMediaIO not found")
 
-# Also patch in utils module where it's imported
-import vllm.multimodal.utils as _vllm_utils_module
-_vllm_utils_module.AudioMediaIO = _PatchedAudioMediaIO
+    class _PatchedAudioMediaIO(_OriginalAudioMediaIO):
+        """AudioMediaIO implementation using FFmpeg for audio decoding."""
+
+        def load_bytes(self, data: bytes) -> tuple[np.ndarray, int]:
+            return _ffmpeg_load_bytes(data)
+
+        def load_base64(self, media_type: str, data: str) -> tuple[np.ndarray, int]:
+            return _ffmpeg_load_bytes(base64.b64decode(data))
+
+        def load_file(self, filepath) -> tuple[np.ndarray, int]:
+            return _ffmpeg_load_file(filepath)
+
+    # Replace globally (when supported by this vLLM version).
+    _vllm_audio_module.AudioMediaIO = _PatchedAudioMediaIO
+
+    # Also patch in utils module where it's imported (older vLLM versions).
+    try:
+        import vllm.multimodal.utils as _vllm_utils_module
+
+        if hasattr(_vllm_utils_module, "AudioMediaIO"):
+            _vllm_utils_module.AudioMediaIO = _PatchedAudioMediaIO
+    except Exception:
+        # Ignore on newer vLLM versions where this module/layout changed.
+        pass
+except Exception as e:
+    logger.warning(
+        "VibeVoice vLLM plugin: AudioMediaIO patch skipped (vLLM API mismatch): %s",
+        e,
+    )
 
 # ============================================================================
 

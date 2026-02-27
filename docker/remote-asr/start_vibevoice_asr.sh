@@ -98,13 +98,15 @@ if [ -n "${MODEL_PATH_OVERRIDE}" ]; then
 elif [ "${MODEL_SOURCE}" = "modelscope" ]; then
   echo "[vibevoice-asr] Downloading model from ModelScope..."
   if _ensure_modelscope; then
-    MODEL_PATH="$(_download_modelscope || true)"
+    # ModelScope may print progress/info lines to stdout; keep only the last non-empty line
+    # as the actual snapshot path.
+    MODEL_PATH="$(_download_modelscope | awk 'NF{line=$0} END{print line}' || true)"
   fi
 fi
 
 if [ -z "${MODEL_PATH}" ]; then
   echo "[vibevoice-asr] Falling back to HuggingFace download..." >&2
-  MODEL_PATH="$(_download_huggingface || true)"
+  MODEL_PATH="$(_download_huggingface | awk 'NF{line=$0} END{print line}' || true)"
 fi
 
 if [ -z "${MODEL_PATH}" ]; then
