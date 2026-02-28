@@ -23,7 +23,9 @@ async def fetch_diarizer_segments(
         raise ValueError("base_url must be non-empty")
 
     files = {"file": ("audio.wav", wav_bytes, "audio/wav")}
-    async with httpx.AsyncClient(timeout=timeout_s) as client:
+    # This is an intra-network call in typical deployments. Avoid inheriting
+    # arbitrary proxy env vars that may be set on the host/CI.
+    async with httpx.AsyncClient(timeout=timeout_s, trust_env=False) as client:
         resp = await client.post(f"{base_url}/api/v1/diarize", files=files)
         resp.raise_for_status()
         obj = resp.json()

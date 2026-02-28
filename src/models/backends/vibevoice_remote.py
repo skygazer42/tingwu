@@ -49,7 +49,11 @@ class VibeVoiceRemoteBackend(ASRBackend):
 
     def load(self) -> None:
         if self._client is None:
-            self._client = httpx.Client(timeout=self.timeout_s)
+            # Do not inherit HTTP(S)_PROXY/ALL_PROXY by default.
+            # These backends usually talk to localhost/docker networks, and some
+            # environments set unsupported proxy schemes (e.g. "socks://") that
+            # cause httpx client init to fail before sending any request.
+            self._client = httpx.Client(timeout=self.timeout_s, trust_env=False)
 
     @property
     def supports_streaming(self) -> bool:
@@ -312,4 +316,3 @@ def _time_to_ms(v: object) -> int:
         return int(round(float(low) * 1000.0))
     except ValueError:
         return 0
-

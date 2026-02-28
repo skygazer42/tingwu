@@ -1,4 +1,5 @@
 import pytest
+import os
 import sys
 from pathlib import Path
 import types
@@ -6,6 +7,11 @@ import importlib.util
 import builtins
 
 sys.path.insert(0, str(Path(__file__).parent))
+
+# Unit tests should be deterministic and offline-friendly.
+# The repo ships a `.env` tuned for deployment which may enable heavy features
+# (e.g. punctuation restoration model downloads). Override those defaults here.
+os.environ.setdefault("PUNC_RESTORE_ENABLE", "false")
 
 
 def _ensure_optional_dependency_stubs_installed() -> None:

@@ -1326,7 +1326,9 @@ class TranscriptionEngine:
             data["asr_options"] = json.dumps(diar_asr_options, ensure_ascii=False)
 
         files = {"file": ("audio.wav", wav_bytes, "audio/wav")}
-        async with httpx.AsyncClient(timeout=timeout_s) as client:
+        # The helper TingWu service is usually on localhost/docker networks.
+        # Avoid inheriting proxy env vars that can break httpx client init.
+        async with httpx.AsyncClient(timeout=timeout_s, trust_env=False) as client:
             resp = await client.post(f"{base_url}/api/v1/transcribe", data=data, files=files)
             resp.raise_for_status()
             obj = resp.json()

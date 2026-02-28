@@ -44,15 +44,128 @@ _fail() {
   echo "FAIL $*" >&2
 }
 
+_tmpfile() {
+  mktemp -t tingwu_smoke_XXXXXX
+}
+
+_curl_to_file() {
+  # Usage: _curl_to_file OUT_FILE URL [curl args...]
+  # Writes response body to OUT_FILE, prints HTTP status code (or 000) to stdout.
+  local out_file="$1"; shift || true
+  local url="$1"; shift || true
+  curl -sS -m "${TIMEOUT_S}" -o "${out_file}" -w '%{http_code}' "${url}" "$@" || echo "000"
+}
+
+_print_body_head() {
+  # Usage: _print_body_head FILE
+  local f="$1"
+  if [ -s "${f}" ]; then
+    echo "---- response body (head) ----" >&2
+    head -c 4096 "${f}" >&2 || true
+    echo "" >&2
+    echo "------------------------------" >&2
+  fi
+}
+
 _curl_json() {
   # Usage: _curl_json URL [curl args...]
   local url="$1"; shift || true
-  curl -fsS -m "${TIMEOUT_S}" "${url}" "$@" | python3 -m json.tool >/dev/null
+  local tmp
+  tmp="$(_tmpfile)"
+  local code
+  code="$(_curl_to_file "${tmp}" "${url}" "$@")"
+
+  if [ "${code}" = "000" ]; then
+    echo "ERROR curl failed (HTTP 000): ${url}" >&2
+    _print_body_head "${tmp}"
+    rm -f "${tmp}" || true
+    return 1
+  fi
+
+  if [ "${code}" -lt 200 ] || [ "${code}" -ge 300 ]; then
+    echo "ERROR HTTP ${code}: ${url}" >&2
+    _print_body_head "${tmp}"
+    rm -f "${tmp}" || true
+    return 1
+  fi
+
+  if ! python3 -m json.tool <"${tmp}" >/dev/null 2>&1; then
+    echo "ERROR invalid JSON response: ${url}" >&2
+    _print_body_head "${tmp}"
+    rm -f "${tmp}" || true
+    return 1
+  fi
+
+  rm -f "${tmp}" || true
+  return 0
 }
 
 _curl_text() {
   local url="$1"; shift || true
-  curl -fsS -m "${TIMEOUT_S}" "${url}" "$@" >/dev/null
+  local tmp
+  tmp="$(_tmpfile)"
+  local code
+  code="$(_curl_to_file "${tmp}" "${url}" "$@")"
+
+  if [ "${code}" = "000" ]; then
+    echo "ERROR curl failed (HTTP 000): ${url}" >&2
+    _print_body_head "${tmp}"
+    rm -f "${tmp}" || true
+    return 1
+  fi
+
+  if [ "${code}" -lt 200 ] || [ "${code}" -ge 300 ]; then
+    echo "ERROR HTTP ${code}: ${url}" >&2
+    _print_body_head "${tmp}"
+    rm -f "${tmp}" || true
+    return 1
+  fi
+
+  rm -f "${tmp}" || true
+  return 0
+}
+
+_assert_transcribe_success() {
+  # Usage: _assert_transcribe_success JSON_FILE
+  local f="$1"
+  python3 - "${f}" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as fp:
+    obj = json.load(fp)
+
+code = obj.get("code")
+if code != 0:
+    raise SystemExit(f"expected code=0, got code={code!r}")
+PY
+}
+
+_assert_batch_success() {
+  # Usage: _assert_batch_success JSON_FILE
+  local f="$1"
+  python3 - "${f}" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as fp:
+    obj = json.load(fp)
+
+failed = obj.get("failed_count")
+if isinstance(failed, int) and failed == 0:
+    raise SystemExit(0)
+
+results = obj.get("results") or []
+if isinstance(results, list):
+    bad = [r for r in results if isinstance(r, dict) and not r.get("success")]
+    if bad:
+        err = bad[0].get("error") or bad[0]
+        raise SystemExit(f"batch item failed: {err}")
+
+raise SystemExit(f"expected failed_count=0, got failed_count={failed!r}")
+PY
 }
 
 _test_one_base() {
@@ -79,28 +192,43 @@ _test_one_base() {
   if _curl_json "${base}/api/v1/hotwords/reload" -X POST; then _ok "${base} POST /api/v1/hotwords/reload"; else _fail "${base} POST /api/v1/hotwords/reload"; fi
   if _curl_json "${base}/api/v1/hotwords/context/reload" -X POST; then _ok "${base} POST /api/v1/hotwords/context/reload"; else _fail "${base} POST /api/v1/hotwords/context/reload"; fi
 
-  if curl -fsS -m "${TIMEOUT_S}" -X POST "${base}/api/v1/transcribe" \
-      -F "file=@${AUDIO}" \
-      -F "with_speaker=false" \
-      -F "apply_hotword=true" \
-      -F "apply_llm=false" \
-    | python3 -m json.tool >/dev/null; then
+  local tmp
+  local code
+
+  tmp="$(_tmpfile)"
+  code="$(_curl_to_file "${tmp}" "${base}/api/v1/transcribe" \
+    -X POST \
+    -F "file=@${AUDIO}" \
+    -F "with_speaker=false" \
+    -F "apply_hotword=true" \
+    -F "apply_llm=false" \
+  )"
+  if [ "${code}" -ge 200 ] && [ "${code}" -lt 300 ] && python3 -m json.tool <"${tmp}" >/dev/null 2>&1 && _assert_transcribe_success "${tmp}" >/dev/null 2>&1; then
     _ok "${base} POST /api/v1/transcribe"
   else
+    echo "ERROR HTTP ${code}: ${base}/api/v1/transcribe" >&2
+    _print_body_head "${tmp}"
     _fail "${base} POST /api/v1/transcribe"
   fi
+  rm -f "${tmp}" || true
 
-  if curl -fsS -m "${TIMEOUT_S}" -X POST "${base}/api/v1/transcribe/batch" \
-      -F "files=@${AUDIO}" \
-      -F "files=@${AUDIO}" \
-      -F "with_speaker=false" \
-      -F "apply_hotword=true" \
-      -F "apply_llm=false" \
-    | python3 -m json.tool >/dev/null; then
+  tmp="$(_tmpfile)"
+  code="$(_curl_to_file "${tmp}" "${base}/api/v1/transcribe/batch" \
+    -X POST \
+    -F "files=@${AUDIO}" \
+    -F "files=@${AUDIO}" \
+    -F "with_speaker=false" \
+    -F "apply_hotword=true" \
+    -F "apply_llm=false" \
+  )"
+  if [ "${code}" -ge 200 ] && [ "${code}" -lt 300 ] && python3 -m json.tool <"${tmp}" >/dev/null 2>&1 && _assert_batch_success "${tmp}" >/dev/null 2>&1; then
     _ok "${base} POST /api/v1/transcribe/batch"
   else
+    echo "ERROR HTTP ${code}: ${base}/api/v1/transcribe/batch" >&2
+    _print_body_head "${tmp}"
     _fail "${base} POST /api/v1/transcribe/batch"
   fi
+  rm -f "${tmp}" || true
 }
 
 _test_diarizer() {
