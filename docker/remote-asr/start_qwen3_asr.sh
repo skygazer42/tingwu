@@ -76,11 +76,11 @@ args=(
 )
 
 if [ -n "${MAX_MODEL_LEN}" ]; then
-  if qwen-asr-serve --help 2>&1 | grep -q -- "--max-model-len"; then
-    args+=(--max-model-len "${MAX_MODEL_LEN}")
-  else
-    echo "[qwen3-asr] WARNING: qwen-asr-serve does not support --max-model-len; ignoring QWEN3_MAX_MODEL_LEN" >&2
-  fi
+  # qwen-asr-serve is a thin wrapper around `vllm serve`, so it supports the
+  # same CLI flags (including `--max-model-len`). vLLM's default `--help` output
+  # can be abbreviated (requires `--help=all` for the full list), so avoid
+  # brittle feature-detection here and pass the knob directly.
+  args+=(--max-model-len "${MAX_MODEL_LEN}")
 fi
 
 exec qwen-asr-serve "${args[@]}"
