@@ -122,8 +122,8 @@ class Settings(BaseSettings):
     gguf_tokens_path: str = "models/Fun-ASR-Nano-GGUF/tokens.txt"
     gguf_lib_dir: str = "models/bin"  # llama.cpp 库目录
 
-    # Remote ASR 后端配置（自建 vLLM OpenAI-compatible server）
-    # Qwen3-ASR: /v1/chat/completions (audio_url)
+    # Remote ASR 后端配置（自建 OpenAI-compatible server）
+    # Qwen3-ASR: 优先 /v1/audio/transcriptions（Whisper 风格），部分部署才支持 /v1/chat/completions（audio_url）。
     qwen3_asr_base_url: str = "http://localhost:9001"
     qwen3_asr_model: str = "Qwen/Qwen3-ASR-0.6B"
     qwen3_asr_api_key: str = "EMPTY"
