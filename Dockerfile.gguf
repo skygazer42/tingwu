@@ -117,9 +117,8 @@ RUN if [ -n "${LLAMA_CPP_REF}" ] && test -d .git; then \
 	      -DLLAMA_BUILD_SERVER=OFF \
 	    && cmake --build build -j"$(nproc)" \
 	    && mkdir -p /out \
-	    && find build -name 'libllama.so' -exec cp -v {} /out/ \; \
-	    && find build -name 'libggml.so' -exec cp -v {} /out/ \; \
-	    && find build -name 'libggml-base.so' -exec cp -v {} /out/ \;
+	    && find build -name 'libllama.so*' -exec cp -v {} /out/ \; \
+	    && find build -name 'libggml*.so*' -exec cp -v {} /out/ \;
 
 FROM ${TORCH_BASE_IMAGE}
 

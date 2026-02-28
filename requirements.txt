@@ -20,6 +20,9 @@ librosa>=0.10.0
 soundfile>=0.12.1
 ffmpeg-python>=0.2.0
 numpy>=1.24.0
+# SciPy is pulled in by librosa/ASR deps; pin to avoid SciPy 1.15.x import-time
+# crashes on Python 3.10 + numpy 1.26.x (see SciPy issue #22877).
+scipy<1.15
 noisereduce>=3.0.0
 
 # Hot word optimization (from CapsWriter)

@@ -53,7 +53,12 @@ _curl_to_file() {
   # Writes response body to OUT_FILE, prints HTTP status code (or 000) to stdout.
   local out_file="$1"; shift || true
   local url="$1"; shift || true
-  curl -sS -m "${TIMEOUT_S}" -o "${out_file}" -w '%{http_code}' "${url}" "$@" || echo "000"
+  local code
+  if code="$(curl -sS -m "${TIMEOUT_S}" -o "${out_file}" -w '%{http_code}' "${url}" "$@")"; then
+    echo "${code}"
+  else
+    echo "000"
+  fi
 }
 
 _print_body_head() {

@@ -275,9 +275,12 @@ services:
       # vLLM max context length. The upstream default is 65536, which can require
       # a large KV cache. Use a smaller default so Qwen3-ASR can co-exist with
       # other GPU services (e.g. VibeVoice) on a single card.
-      QWEN3_MAX_MODEL_LEN: ${QWEN3_MAX_MODEL_LEN:-32768}
+      # vLLM KV cache scales with max_model_len. Use a conservative default so
+      # Qwen3-ASR can co-exist with other GPU services (e.g. VibeVoice) on a
+      # single card. Override in `.env` if you have plenty of VRAM.
+      QWEN3_MAX_MODEL_LEN: ${QWEN3_MAX_MODEL_LEN:-16384}
       PORT: 8000
-      GPU_MEMORY_UTILIZATION: ${QWEN3_GPU_MEMORY_UTILIZATION:-0.85}
+      GPU_MEMORY_UTILIZATION: ${QWEN3_GPU_MEMORY_UTILIZATION:-0.75}
       MODEL_SOURCE: ${MODEL_SOURCE:-modelscope}
     deploy:
       resources:

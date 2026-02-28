@@ -123,10 +123,11 @@ class VibeVoiceRemoteBackend(ASRBackend):
                     ],
                 },
             ],
-            "max_tokens": 32768,
+            # Keep conservative: some vLLM deployments reject too-large max_tokens
+            # with HTTP 400 (must fit within server max_model_len).
+            "max_tokens": 4096,
             "temperature": 0.0,
             "top_p": 1.0,
-            "repetition_penalty": 1.0,
             "stream": False,
         }
 
@@ -136,7 +137,20 @@ class VibeVoiceRemoteBackend(ASRBackend):
             headers["Authorization"] = f"Bearer {self.api_key}"
 
         resp = self._client.post(url, json=payload, headers=headers)
-        resp.raise_for_status()
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            body = ""
+            try:
+                body = e.response.text
+            except Exception:
+                body = ""
+            body = (body or "").strip()
+            if len(body) > 4096:
+                body = body[:4096] + " ..."
+            raise RuntimeError(
+                f"VibeVoice-ASR HTTP {e.response.status_code} for {url}: {body or '<empty body>'}"
+            ) from e
 
         raw = resp.json()
         content = _extract_chat_content(raw)
