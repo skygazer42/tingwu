@@ -137,4 +137,5 @@ exec vllm serve "${MODEL_PATH}" \
   --chat-template-content-format openai \
   --tensor-parallel-size 1 \
   --allowed-local-media-path /app \
+  --host 0.0.0.0 \
   --port "${PORT}"

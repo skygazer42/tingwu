@@ -111,7 +111,7 @@ class GGUFBackend(ASRBackend):
         # 默认库目录为模型目录下的 bin 子目录
         if lib_dir is None:
             lib_dir = Path(resolved_decoder_path).parent / "bin"
-        self.lib_dir = Path(lib_dir)
+        self.lib_dir = self._resolve_lib_dir(lib_dir)
 
         # 运行时对象
         self._encoder_sess = None
@@ -205,6 +205,63 @@ class GGUFBackend(ASRBackend):
             f"Tried {len(attempted)} candidates; keeping '{raw}'."
         )
         return raw
+
+    @staticmethod
+    def _resolve_lib_dir(raw_dir: str | Path) -> Path:
+        """Resolve llama.cpp shared library directory for common layouts.
+
+        Historically the project used `data/models/bin` for llama.cpp libs
+        (host-provided builds). Newer Docker images bundle the shared libs under
+        `/app/llama_cpp/lib` and expose `GGUF_LIB_DIR` accordingly.
+        """
+        raw = str(raw_dir or "").strip()
+        if not raw:
+            return Path(raw_dir)
+
+        p0 = Path(raw)
+        attempted: List[Path] = []
+
+        def _probe_dir(path: Path) -> Optional[Path]:
+            attempted.append(path)
+            if path.is_dir():
+                return path
+            return None
+
+        # 1) Try the configured value as-is (absolute or relative).
+        found = _probe_dir(p0)
+        if found:
+            return found
+
+        # 2) If relative, try common anchors: repo base, data_dir, models_dir.
+        if not p0.is_absolute():
+            anchors = [settings.base_dir, settings.data_dir, settings.models_dir]
+            for anchor in anchors:
+                found = _probe_dir(anchor / p0)
+                if found:
+                    logger.info(f"[gguf] Resolved lib dir: {raw} -> {found}")
+                    return found
+
+        # 3) Docker image bundled libs.
+        for d in (Path("/app/llama_cpp/lib"),):
+            found = _probe_dir(d)
+            if found:
+                logger.info(f"[gguf] Resolved lib dir: {raw} -> {found}")
+                return found
+
+        # Keep original for error reporting, but normalize relative paths to data_dir.
+        if not p0.is_absolute():
+            normalized = settings.data_dir / p0
+            logger.warning(
+                f"[gguf] lib_dir not found at configured path '{raw}'. "
+                f"Tried {len(attempted)} candidates; keeping '{normalized}'."
+            )
+            return normalized
+
+        logger.warning(
+            f"[gguf] lib_dir not found at configured path '{raw}'. "
+            f"Tried {len(attempted)} candidates; keeping '{p0}'."
+        )
+        return p0
 
     def load(self) -> None:
         """加载模型"""

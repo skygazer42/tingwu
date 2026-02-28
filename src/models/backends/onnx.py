@@ -279,8 +279,11 @@ class ONNXBackend(ASRBackend):
 
         try:
             # 直接对完整音频进行 ASR
-            # funasr_onnx Paraformer 返回: [{'preds': ('text', [chars])}]
-            asr_result = self._model(wav_path)
+            # funasr_onnx Paraformer 最稳定的调用方式是传入 path list
+            # (see funasr-onnx examples). Single-string inputs sometimes behave
+            # differently across versions.
+            # 返回: [{'preds': ('text', [chars])}]
+            asr_result = self._model([wav_path])
 
             if not asr_result or len(asr_result) == 0:
                 return {"text": "", "sentence_info": []}

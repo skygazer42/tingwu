@@ -24,6 +24,9 @@ DIARIZER_PORT="${DIARIZER_PORT:-8300}"
 REMOTE_ASR_PORTS="${REMOTE_ASR_PORTS:-9001 9002}"
 SKIP_REMOTE_ASR_CHECKS="${SKIP_REMOTE_ASR_CHECKS:-false}"
 TIMEOUT_S="${TIMEOUT_S:-10}"
+REMOTE_ASR_TIMEOUT_S="${REMOTE_ASR_TIMEOUT_S:-8}"
+REMOTE_ASR_READY_RETRIES="${REMOTE_ASR_READY_RETRIES:-30}"
+REMOTE_ASR_READY_SLEEP_S="${REMOTE_ASR_READY_SLEEP_S:-2}"
 AUDIO="${AUDIO:-data/benchmark/test_short.mp3}"
 
 if [ ! -f "${AUDIO}" ]; then
@@ -61,6 +64,19 @@ _curl_to_file() {
   fi
 }
 
+_curl_to_file_timeout() {
+  # Usage: _curl_to_file_timeout TIMEOUT_S OUT_FILE URL [curl args...]
+  local timeout_s="$1"; shift || true
+  local out_file="$1"; shift || true
+  local url="$1"; shift || true
+  local code
+  if code="$(curl -sS -m "${timeout_s}" -o "${out_file}" -w '%{http_code}' "${url}" "$@")"; then
+    echo "${code}"
+  else
+    echo "000"
+  fi
+}
+
 _print_body_head() {
   # Usage: _print_body_head FILE
   local f="$1"
@@ -70,6 +86,37 @@ _print_body_head() {
     echo "" >&2
     echo "------------------------------" >&2
   fi
+}
+
+_wait_json_ok() {
+  # Usage: _wait_json_ok URL RETRIES SLEEP_S TIMEOUT_S
+  local url="$1"
+  local retries="$2"
+  local sleep_s="$3"
+  local timeout_s="$4"
+
+  local tmp
+  tmp="$(_tmpfile)"
+  local code="000"
+
+  for i in $(seq 1 "${retries}"); do
+    code="$(_curl_to_file_timeout "${timeout_s}" "${tmp}" "${url}")"
+    if [ "${code}" -ge 200 ] && [ "${code}" -lt 300 ] && python3 -m json.tool <"${tmp}" >/dev/null 2>&1; then
+      rm -f "${tmp}" || true
+      return 0
+    fi
+    # Keep last response body for debugging.
+    sleep "${sleep_s}"
+  done
+
+  if [ "${code}" = "000" ]; then
+    echo "ERROR curl failed (HTTP 000): ${url}" >&2
+  else
+    echo "ERROR HTTP ${code}: ${url}" >&2
+  fi
+  _print_body_head "${tmp}"
+  rm -f "${tmp}" || true
+  return 1
 }
 
 _curl_json() {
@@ -275,6 +322,7 @@ echo "- PORTS=${PORTS}"
 echo "- REMOTE_ASR_PORTS=${REMOTE_ASR_PORTS} (skip=${SKIP_REMOTE_ASR_CHECKS})"
 echo "- AUDIO=${AUDIO}"
 echo "- TIMEOUT_S=${TIMEOUT_S}"
+echo "- REMOTE_ASR_TIMEOUT_S=${REMOTE_ASR_TIMEOUT_S} retries=${REMOTE_ASR_READY_RETRIES} sleep=${REMOTE_ASR_READY_SLEEP_S}s"
 echo ""
 
 if [ "${SKIP_REMOTE_ASR_CHECKS}" != "true" ] && [ -n "${REMOTE_ASR_PORTS}" ]; then
@@ -283,7 +331,7 @@ if [ "${SKIP_REMOTE_ASR_CHECKS}" != "true" ] && [ -n "${REMOTE_ASR_PORTS}" ]; th
   echo "=============================="
   for rp in ${REMOTE_ASR_PORTS}; do
     base="http://localhost:${rp}"
-    if _curl_json "${base}/v1/models"; then
+    if _wait_json_ok "${base}/v1/models" "${REMOTE_ASR_READY_RETRIES}" "${REMOTE_ASR_READY_SLEEP_S}" "${REMOTE_ASR_TIMEOUT_S}"; then
       _ok "${base} GET /v1/models"
     else
       _fail "${base} GET /v1/models"
